@@ -22,37 +22,42 @@ const UserNameMaxLength = 20
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int            `json:"id"`
-	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string         `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId         string         `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId       string         `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode string         `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
-	AccessToken      *string        `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int            `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount     int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string         `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	DeletedAt        gorm.DeletedAt `gorm:"index"`
-	LinuxDOId        string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
-	Remark           string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	StripeCustomer   string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	CreatedAt        int64          `json:"created_at" gorm:"autoCreateTime;column:created_at"`
-	LastLoginAt      int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	Id                    int                             `json:"id"`
+	Username              string                          `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password              string                          `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword      string                          `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName           string                          `json:"display_name" gorm:"index" validate:"max=20"`
+	Role                  int                             `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status                int                             `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email                 string                          `json:"email" gorm:"index" validate:"max=50"`
+	PhoneNumber           string                          `json:"phone_number" gorm:"type:varchar(32);column:phone_number;index" validate:"max=32"`
+	GitHubId              string                          `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId             string                          `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId                string                          `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId              string                          `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId            string                          `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode      string                          `json:"verification_code" gorm:"-:all"`       // this field is only for Email verification, don't save it to database!
+	PhoneVerificationCode string                          `json:"phone_verification_code" gorm:"-:all"` // this field is only for Phone verification, don't save it to database!
+	DeviceFingerprint     AffiliateSignupFingerprintInput `json:"device_fingerprint" gorm:"-:all"`
+	AccessToken           *string                         `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Quota                 int                             `json:"quota" gorm:"type:int;default:0"`
+	UsedQuota             int                             `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	RequestCount          int                             `json:"request_count" gorm:"type:int;default:0;"`               // request number
+	Group                 string                          `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode               string                          `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount              int                             `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota              int                             `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota       int                             `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	AffRebateRatePercent  *float64                        `json:"aff_rebate_rate_percent" gorm:"type:decimal(5,2);column:aff_rebate_rate_percent"`
+	AffCodeCustom         bool                            `json:"aff_code_custom" gorm:"default:false;column:aff_code_custom"`
+	InviterId             int                             `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	DeletedAt             gorm.DeletedAt                  `gorm:"index"`
+	LinuxDOId             string                          `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting               string                          `json:"setting" gorm:"type:text;column:setting"`
+	Remark                string                          `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	StripeCustomer        string                          `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	CreatedAt             int64                           `json:"created_at" gorm:"autoCreateTime;column:created_at"`
+	LastLoginAt           int64                           `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -162,16 +167,24 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 }
 
 // CheckUserExistOrDeleted check if user exist or deleted, if not exist, return false, nil, if deleted or exist, return true, nil
-func CheckUserExistOrDeleted(username string, email string) (bool, error) {
+func CheckUserExistOrDeleted(username string, email string, phoneNumbers ...string) (bool, error) {
 	var user User
+	phoneNumber := ""
+	if len(phoneNumbers) > 0 {
+		phoneNumber = common.NormalizePhoneNumber(phoneNumbers[0], "86")
+	}
 
 	// err := DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
 	// check email if empty
 	var err error
-	if email == "" {
+	if email == "" && phoneNumber == "" {
 		err = DB.Unscoped().First(&user, "username = ?", username).Error
-	} else {
+	} else if phoneNumber == "" {
 		err = DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
+	} else if email == "" {
+		err = DB.Unscoped().First(&user, "username = ? or phone_number = ?", username, phoneNumber).Error
+	} else {
+		err = DB.Unscoped().First(&user, "username = ? or email = ? or phone_number = ?", username, email, phoneNumber).Error
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -245,8 +258,13 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	query := tx.Unscoped().Model(&User{})
 
 	// 构建搜索条件
-	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
-	likeArgs := []interface{}{"%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%"}
+	normalizedPhone := common.NormalizePhoneNumber(keyword, "86")
+	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ? OR phone_number LIKE ?"
+	likeArgs := []interface{}{"%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%"}
+	if normalizedPhone != "" {
+		likeCondition += " OR phone_number LIKE ?"
+		likeArgs = append(likeArgs, "%"+normalizedPhone+"%")
+	}
 
 	// 尝试将关键字转换为整数ID
 	keywordInt, err := strconv.Atoi(keyword)
@@ -287,6 +305,32 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	}
 
 	return users, total, nil
+}
+
+func IsPhoneNumberAlreadyTaken(phoneNumber string) bool {
+	phoneNumber = common.NormalizePhoneNumber(phoneNumber, "86")
+	if phoneNumber == "" {
+		return false
+	}
+	return DB.Unscoped().Where("phone_number = ?", phoneNumber).Find(&User{}).RowsAffected == 1
+}
+
+func IsPhoneNumberTakenByOtherUser(phoneNumber string, userId int) bool {
+	phoneNumber = common.NormalizePhoneNumber(phoneNumber, "86")
+	if phoneNumber == "" {
+		return false
+	}
+	return DB.Unscoped().Where("phone_number = ? AND id <> ?", phoneNumber, userId).Find(&User{}).RowsAffected == 1
+}
+
+func GetUserByPhoneNumber(phoneNumber string) (*User, error) {
+	phoneNumber = common.NormalizePhoneNumber(phoneNumber, "86")
+	if phoneNumber == "" {
+		return nil, ErrInvalidCredentials
+	}
+	var user User
+	err := DB.First(&user, "phone_number = ?", phoneNumber).Error
+	return &user, err
 }
 
 func GetUserById(id int, selectAll bool) (*User, error) {
@@ -340,6 +384,10 @@ func inviteUser(inviterId int) (err error) {
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
+	if !operation_setting.IsPaymentComplianceConfirmed() {
+		return errors.New("支付合规确认后才可转移邀请额度")
+	}
+
 	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {
 		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(int(common.QuotaPerUnit)))
@@ -369,6 +417,9 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 
 	// 保存用户状态
 	if err := tx.Save(user).Error; err != nil {
+		return err
+	}
+	if err := CreateAffiliateTransferLedgerTx(tx, user, quota); err != nil {
 		return err
 	}
 
@@ -427,6 +478,9 @@ func (user *User) Insert(inviterId int) error {
 			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
+		}
+		if applied, err := ApplyAffiliateSignupBonus(user.Id); err == nil && applied {
+			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请注册返利 %s", logger.LogQuota(common.AffiliateSignupRewardQuota)))
 		}
 	}
 	return nil
@@ -488,6 +542,9 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
 			_ = inviteUser(inviterId)
 		}
+		if applied, err := ApplyAffiliateSignupBonus(user.Id); err == nil && applied {
+			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请注册返利 %s", logger.LogQuota(common.AffiliateSignupRewardQuota)))
+		}
 	}
 }
 
@@ -522,6 +579,7 @@ func (user *User) Edit(updatePassword bool) error {
 	updates := map[string]interface{}{
 		"username":     newUser.Username,
 		"display_name": newUser.DisplayName,
+		"phone_number": newUser.PhoneNumber,
 		"group":        newUser.Group,
 		"remark":       newUser.Remark,
 	}
@@ -545,6 +603,7 @@ func (user *User) ClearBinding(bindingType string) error {
 
 	bindingColumnMap := map[string]string{
 		"email":    "email",
+		"phone":    "phone_number",
 		"github":   "github_id",
 		"discord":  "discord_id",
 		"oidc":     "oidc_id",
@@ -599,8 +658,12 @@ func (user *User) ValidateAndFill() (err error) {
 	if username == "" || password == "" {
 		return ErrUserEmptyCredentials
 	}
-	// find by username or email
-	err = DB.Where("username = ? OR email = ?", username, username).First(user).Error
+	normalizedPhone := common.NormalizePhoneNumber(username, "86")
+	if normalizedPhone != "" && !common.LooksLikeEmailIdentifier(username) {
+		err = DB.Where("username = ? OR email = ? OR phone_number = ?", username, username, normalizedPhone).First(user).Error
+	} else {
+		err = DB.Where("username = ? OR email = ?", username, username).First(user).Error
+	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrInvalidCredentials
@@ -715,6 +778,17 @@ func ResetUserPasswordByEmail(email string, password string) error {
 	}
 	err = DB.Model(&User{}).Where("email = ?", email).Update("password", hashedPassword).Error
 	return err
+}
+
+func UpdateUserPasswordById(userId int, password string) error {
+	if userId == 0 || password == "" {
+		return errors.New("用户或密码为空！")
+	}
+	hashedPassword, err := common.Password2Hash(password)
+	if err != nil {
+		return err
+	}
+	return DB.Model(&User{}).Where("id = ?", userId).Update("password", hashedPassword).Error
 }
 
 func IsAdmin(userId int) bool {

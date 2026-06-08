@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +15,8 @@ import (
 const (
 	rankingCacheTTL         = 5 * time.Minute
 	rankingLeaderboardLimit = 20
+	userLeaderboardLimit    = 20
+	userLeaderboardMaxLimit = 100
 	rankingHistoryLimit     = 10
 	rankingVendorLimit      = 5
 	rankingMoverLimit       = 6
@@ -27,6 +31,25 @@ type RankingsResponse struct {
 	TopDroppers        []RankingMover     `json:"top_droppers"`
 	ModelsHistory      ModelHistorySeries `json:"models_history"`
 	VendorShareHistory VendorShareSeries  `json:"vendor_share_history"`
+}
+
+type UserLeaderboardResponse struct {
+	Period        string                `json:"period"`
+	StartDate     string                `json:"start_date"`
+	EndDate       string                `json:"end_date"`
+	Ranking       []UserLeaderboardItem `json:"ranking"`
+	TotalTokens   int64                 `json:"total_tokens"`
+	TotalRequests int64                 `json:"total_requests"`
+	TotalQuota    int64                 `json:"total_quota"`
+}
+
+type UserLeaderboardItem struct {
+	Rank        int    `json:"rank"`
+	UserId      int    `json:"user_id"`
+	DisplayName string `json:"display_name"`
+	Tokens      int64  `json:"tokens"`
+	Requests    int64  `json:"requests"`
+	Quota       int64  `json:"quota"`
 }
 
 type RankedModel struct {
@@ -161,6 +184,106 @@ func GetRankingsSnapshot(period string) (*RankingsResponse, error) {
 	rankingCacheMu.Unlock()
 
 	return data, nil
+}
+
+func GetUserLeaderboardSnapshot(period string, timezone string, rawLimit string) (*UserLeaderboardResponse, error) {
+	limit, err := parseUserLeaderboardLimit(rawLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	startTime, endTime, normalizedPeriod, ok := userLeaderboardRange(period, timezone, time.Now())
+	if !ok {
+		return nil, fmt.Errorf("invalid leaderboard period: use today or yesterday")
+	}
+
+	ignoredUserIds := model.GetUsageLeaderboardIgnoredUserIds()
+	rows, summary, err := model.GetUserLeaderboardRows(startTime, endTime, limit, ignoredUserIds)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]UserLeaderboardItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, UserLeaderboardItem{
+			Rank:        row.Rank,
+			UserId:      row.UserId,
+			DisplayName: maskUserLeaderboardDisplayName(row.Username, row.UserId),
+			Tokens:      row.Tokens,
+			Requests:    row.Requests,
+			Quota:       row.Quota,
+		})
+	}
+
+	loc := userLeaderboardLocation(timezone)
+	return &UserLeaderboardResponse{
+		Period:        normalizedPeriod,
+		StartDate:     time.Unix(startTime, 0).In(loc).Format("2006-01-02"),
+		EndDate:       time.Unix(endTime-1, 0).In(loc).Format("2006-01-02"),
+		Ranking:       items,
+		TotalTokens:   summary.TotalTokens,
+		TotalRequests: summary.TotalRequests,
+		TotalQuota:    summary.TotalQuota,
+	}, nil
+}
+
+func parseUserLeaderboardLimit(raw string) (int, error) {
+	if strings.TrimSpace(raw) == "" {
+		return userLeaderboardLimit, nil
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("invalid leaderboard limit")
+	}
+	if limit <= 0 {
+		return userLeaderboardLimit, nil
+	}
+	if limit > userLeaderboardMaxLimit {
+		return userLeaderboardMaxLimit, nil
+	}
+	return limit, nil
+}
+
+func userLeaderboardRange(period string, userTZ string, now time.Time) (int64, int64, string, bool) {
+	normalized := strings.TrimSpace(strings.ToLower(period))
+	if normalized == "" {
+		normalized = "today"
+	}
+	loc := userLeaderboardLocation(userTZ)
+	localNow := now.In(loc)
+	todayStart := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, loc)
+	switch normalized {
+	case "today":
+		return todayStart.Unix(), todayStart.AddDate(0, 0, 1).Unix(), normalized, true
+	case "yesterday":
+		start := todayStart.AddDate(0, 0, -1)
+		return start.Unix(), todayStart.Unix(), normalized, true
+	default:
+		return 0, 0, "", false
+	}
+}
+
+func userLeaderboardLocation(userTZ string) *time.Location {
+	if strings.TrimSpace(userTZ) == "" {
+		return time.Local
+	}
+	loc, err := time.LoadLocation(userTZ)
+	if err != nil {
+		return time.Local
+	}
+	return loc
+}
+
+func maskUserLeaderboardDisplayName(username string, userId int) string {
+	trimmed := strings.TrimSpace(username)
+	if trimmed == "" {
+		return fmt.Sprintf("User #%d", userId)
+	}
+	runes := []rune(trimmed)
+	if len(runes) == 0 {
+		return "***"
+	}
+	return string(runes[0]) + "***"
 }
 
 func rankingConfig(period string) (rankingPeriodConfig, error) {

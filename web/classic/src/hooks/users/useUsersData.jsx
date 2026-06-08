@@ -106,7 +106,7 @@ export const useUsersData = () => {
     }
     setSearching(true);
     const res = await API.get(
-      `/api/user/search?keyword=${searchKeyword}&group=${searchGroup}&p=${startIdx}&page_size=${pageSize}`,
+      `/api/user/search?keyword=${encodeURIComponent(searchKeyword)}&group=${encodeURIComponent(searchGroup)}&p=${startIdx}&page_size=${pageSize}`,
     );
     const { success, message, data } = res.data;
     if (success) {

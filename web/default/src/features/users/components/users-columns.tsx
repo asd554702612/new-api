@@ -161,6 +161,21 @@ export function useUsersColumns(): ColumnDef<User>[] {
       meta: { label: t('Status'), mobileBadge: true },
     },
     {
+      accessorKey: 'phone_number',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Phone number')} />
+      ),
+      cell: ({ row }) => {
+        const phoneNumber = row.getValue('phone_number') as string | undefined
+        return (
+          <LongText className='text-muted-foreground max-w-[150px] text-sm'>
+            {phoneNumber || '-'}
+          </LongText>
+        )
+      },
+      meta: { label: t('Phone number'), mobileHidden: true },
+    },
+    {
       id: 'quota',
       accessorKey: 'quota',
       header: ({ column }) => (

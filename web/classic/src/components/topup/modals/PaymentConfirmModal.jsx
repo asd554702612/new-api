@@ -21,6 +21,10 @@ import React from 'react';
 import { Modal, Typography, Card, Skeleton } from '@douyinfe/semi-ui';
 import { SiAlipay, SiWechat, SiStripe } from 'react-icons/si';
 import { CreditCard } from 'lucide-react';
+import {
+  isAlipayDirectPayment,
+  isWechatPayPayment,
+} from '../../../helpers/officialPayment';
 
 const { Text } = Typography;
 
@@ -122,13 +126,15 @@ const PaymentConfirmModal = ({
                   if (payMethod) {
                     return (
                       <>
-                        {payMethod.type === 'alipay' ? (
+                        {payMethod.type === 'alipay' ||
+                        isAlipayDirectPayment(payMethod.type) ? (
                           <SiAlipay
                             className='mr-2'
                             size={16}
                             color='#1677FF'
                           />
-                        ) : payMethod.type === 'wxpay' ? (
+                        ) : payMethod.type === 'wxpay' ||
+                          isWechatPayPayment(payMethod.type) ? (
                           <SiWechat
                             className='mr-2'
                             size={16}

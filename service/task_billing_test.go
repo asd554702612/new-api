@@ -43,7 +43,19 @@ func TestMain(m *testing.M) {
 		&model.Log{},
 		&model.Channel{},
 		&model.TopUp{},
+		&model.SubscriptionPlan{},
+		&model.SubscriptionOrder{},
 		&model.UserSubscription{},
+		&model.PaymentOrderRefund{},
+		&model.PaymentOrderAuditLog{},
+		&model.PaymentActivityChance{},
+		&model.PaymentActivityConfig{},
+		&model.LuckyWheelSession{},
+		&model.LuckyWheelDrawRecord{},
+		&model.LuckyWheelGoldenWindowClaim{},
+		&model.LuckyWheelInviteBonusEvent{},
+		&model.RechargeActivityChance{},
+		&model.RechargeActivityDrawRecord{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -64,7 +76,19 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM logs")
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM top_ups")
+		model.DB.Exec("DELETE FROM subscription_plans")
+		model.DB.Exec("DELETE FROM subscription_orders")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.DB.Exec("DELETE FROM payment_order_refunds")
+		model.DB.Exec("DELETE FROM payment_order_audit_logs")
+		model.DB.Exec("DELETE FROM payment_activity_chances")
+		model.DB.Exec("DELETE FROM payment_activity_configs")
+		model.DB.Exec("DELETE FROM lucky_wheel_sessions")
+		model.DB.Exec("DELETE FROM lucky_wheel_draw_records")
+		model.DB.Exec("DELETE FROM lucky_wheel_golden_window_claims")
+		model.DB.Exec("DELETE FROM lucky_wheel_invite_bonus_events")
+		model.DB.Exec("DELETE FROM recharge_activity_chances")
+		model.DB.Exec("DELETE FROM recharge_activity_draw_records")
 	})
 }
 

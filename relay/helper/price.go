@@ -61,6 +61,12 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
 
+	if identityRatio := model.ResolveAffiliateIdentityMultiplier(relayInfo.UserId, groupRatioInfo.GroupRatio); identityRatio != groupRatioInfo.GroupRatio {
+		groupRatioInfo.AffiliateIdentityRatio = identityRatio
+		groupRatioInfo.GroupRatio = identityRatio
+		groupRatioInfo.HasAffiliateIdentityRatio = true
+	}
+
 	return groupRatioInfo
 }
 

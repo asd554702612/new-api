@@ -23,8 +23,10 @@ import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { SectionPageLayout } from '@/components/layout'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
+import { AffiliateRecordsDialog } from './components/dialogs/affiliate-records-dialog'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
+import { OfficialPaymentDialog } from './components/dialogs/official-payment-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
 import { TransferDialog } from './components/dialogs/transfer-dialog'
 import { RechargeFormCard } from './components/recharge-form-card'
@@ -68,6 +70,7 @@ export function Wallet(props: WalletProps) {
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [billingDialogOpen, setBillingDialogOpen] = useState(false)
+  const [affiliateRecordsOpen, setAffiliateRecordsOpen] = useState(false)
   const [redemptionCode, setRedemptionCode] = useState('')
   const [creemDialogOpen, setCreemDialogOpen] = useState(false)
   const [selectedCreemProduct, setSelectedCreemProduct] =
@@ -88,8 +91,10 @@ export function Wallet(props: WalletProps) {
     amount: paymentAmount,
     calculating,
     processing,
+    officialPayment,
     calculatePaymentAmount,
     processPayment,
+    setOfficialPayment,
   } = usePayment()
   const {
     affiliateLink,
@@ -318,6 +323,9 @@ export function Wallet(props: WalletProps) {
               user={user}
               affiliateLink={affiliateLink}
               onTransfer={() => setTransferDialogOpen(true)}
+              onOpenRecords={() => setAffiliateRecordsOpen(true)}
+              affiliateEnabled={topupInfo?.affiliate_enabled}
+              rebateRate={topupInfo?.affiliate_rebate_rate}
               complianceConfirmed={
                 topupInfo?.payment_compliance_confirmed !== false
               }
@@ -353,12 +361,25 @@ export function Wallet(props: WalletProps) {
         onOpenChange={setBillingDialogOpen}
       />
 
+      <AffiliateRecordsDialog
+        open={affiliateRecordsOpen}
+        onOpenChange={setAffiliateRecordsOpen}
+      />
+
       <CreemConfirmDialog
         open={creemDialogOpen}
         onOpenChange={setCreemDialogOpen}
         onConfirm={handleCreemConfirm}
         product={selectedCreemProduct}
         processing={creemProcessing}
+      />
+
+      <OfficialPaymentDialog
+        open={!!officialPayment}
+        onOpenChange={(open) => {
+          if (!open) setOfficialPayment(null)
+        }}
+        payment={officialPayment}
       />
     </>
   )

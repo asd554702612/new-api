@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getLucideIcon } from '../../helpers/render';
@@ -27,6 +27,7 @@ import { useSidebar } from '../../hooks/common/useSidebar';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
 import { isAdmin, isRoot, showError } from '../../helpers';
 import SkeletonWrapper from './components/SkeletonWrapper';
+import { StatusContext } from '../../context/Status';
 
 import { Nav, Divider, Button } from '@douyinfe/semi-ui';
 
@@ -36,9 +37,18 @@ const routerMap = {
   token: '/console/token',
   redemption: '/console/redemption',
   topup: '/console/topup',
+  myOrders: '/console/my-orders',
+  luckyWheelUser: '/console/lucky-wheel',
+  rechargeActivityUser: '/console/recharge-activity',
   user: '/console/user',
+  affiliates: '/console/affiliates',
   subscription: '/console/subscription',
+  ordersDashboard: '/console/orders/dashboard',
+  orders: '/console/orders',
+  luckyWheel: '/console/orders/lucky-wheel',
+  rechargeActivity: '/console/orders/recharge-activity',
   log: '/console/log',
+  rankings: '/console/rankings',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
   about: '/about',
@@ -53,6 +63,7 @@ const routerMap = {
 
 const SiderBar = ({ onNavigate = () => {} }) => {
   const { t } = useTranslation();
+  const [statusState] = useContext(StatusContext);
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const {
     isModuleVisible,
@@ -67,6 +78,9 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   const [openedKeys, setOpenedKeys] = useState([]);
   const location = useLocation();
   const [routerMapState, setRouterMapState] = useState(routerMap);
+  const luckyWheelEnabled = statusState?.status?.lucky_wheel_enabled === true;
+  const rechargeActivityEnabled =
+    statusState?.status?.recharge_activity_enabled === true;
 
   const workspaceItems = useMemo(() => {
     const items = [
@@ -88,6 +102,11 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('使用日志'),
         itemKey: 'log',
         to: '/log',
+      },
+      {
+        text: t('排行榜'),
+        itemKey: 'rankings',
+        to: '/console/rankings',
       },
       {
         text: t('绘图日志'),
@@ -130,6 +149,21 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/topup',
       },
       {
+        text: t('我的订单'),
+        itemKey: 'myOrders',
+        to: '/console/my-orders',
+      },
+      {
+        text: t('转盘活动'),
+        itemKey: 'luckyWheelUser',
+        to: '/console/lucky-wheel',
+      },
+      {
+        text: t('充值活动'),
+        itemKey: 'rechargeActivityUser',
+        to: '/console/recharge-activity',
+      },
+      {
         text: t('个人设置'),
         itemKey: 'personal',
         to: '/personal',
@@ -138,12 +172,18 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 
     // 根据配置过滤项目
     const filteredItems = items.filter((item) => {
+      if (item.itemKey === 'luckyWheelUser' && !luckyWheelEnabled) {
+        return false;
+      }
+      if (item.itemKey === 'rechargeActivityUser' && !rechargeActivityEnabled) {
+        return false;
+      }
       const configVisible = isModuleVisible('personal', item.itemKey);
       return configVisible;
     });
 
     return filteredItems;
-  }, [t, isModuleVisible]);
+  }, [t, isModuleVisible, luckyWheelEnabled, rechargeActivityEnabled]);
 
   const adminItems = useMemo(() => {
     const items = [
@@ -181,6 +221,36 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('用户管理'),
         itemKey: 'user',
         to: '/user',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('邀请返利'),
+        itemKey: 'affiliates',
+        to: '/console/affiliates',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('支付概览'),
+        itemKey: 'ordersDashboard',
+        to: '/console/orders/dashboard',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('订单管理'),
+        itemKey: 'orders',
+        to: '/console/orders',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('转盘活动'),
+        itemKey: 'luckyWheel',
+        to: '/console/orders/lucky-wheel',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('充值活动'),
+        itemKey: 'rechargeActivity',
+        to: '/console/orders/recharge-activity',
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {

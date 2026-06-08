@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -26,19 +27,26 @@ import (
 )
 
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	PhoneNumber string `json:"phone_number"`
+	SMSCode     string `json:"sms_code"`
+	LoginType   string `json:"login_type"`
 }
 
 func Login(c *gin.Context) {
-	if !common.PasswordLoginEnabled {
-		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
-		return
-	}
 	var loginRequest LoginRequest
-	err := json.NewDecoder(c.Request.Body).Decode(&loginRequest)
+	err := common.DecodeJson(c.Request.Body, &loginRequest)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(loginRequest.LoginType), "sms") {
+		loginByPhoneVerificationCode(c, loginRequest)
+		return
+	}
+	if !common.PasswordLoginEnabled {
+		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
 		return
 	}
 	username := loginRequest.Username
@@ -65,7 +73,39 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// 检查是否启用2FA
+	setupLoginWithTwoFA(&user, c)
+}
+
+func loginByPhoneVerificationCode(c *gin.Context, loginRequest LoginRequest) {
+	if !common.PhoneVerificationEnabled {
+		common.ApiErrorMsg(c, "手机验证未启用")
+		return
+	}
+	phoneNumber := common.NormalizePhoneNumber(loginRequest.PhoneNumber, "86")
+	if phoneNumber == "" {
+		phoneNumber = common.NormalizePhoneNumber(loginRequest.Username, "86")
+	}
+	if phoneNumber == "" || strings.TrimSpace(loginRequest.SMSCode) == "" {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if !common.VerifyPhoneVerificationCode(phoneNumber, loginRequest.SMSCode, common.PhoneVerificationPurposeLogin) {
+		common.ApiErrorMsg(c, "短信验证码错误或已过期")
+		return
+	}
+	user, err := model.GetUserByPhoneNumber(phoneNumber)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
+		return
+	}
+	if user.Status != common.UserStatusEnabled {
+		common.ApiErrorI18n(c, i18n.MsgUserDisabled)
+		return
+	}
+	setupLoginWithTwoFA(user, c)
+}
+
+func setupLoginWithTwoFA(user *model.User, c *gin.Context) {
 	if model.IsTwoFAEnabled(user.Id) {
 		// 设置pending session，等待2FA验证
 		session := sessions.Default(c)
@@ -87,7 +127,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	setupLogin(&user, c)
+	setupLogin(user, c)
 }
 
 // setup session & cookies and then return user info
@@ -145,7 +185,7 @@ func Register(c *gin.Context) {
 		return
 	}
 	var user model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&user)
+	err := common.DecodeJson(c.Request.Body, &user)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
@@ -164,7 +204,22 @@ func Register(c *gin.Context) {
 			return
 		}
 	}
-	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email)
+	user.PhoneNumber = common.NormalizePhoneNumber(user.PhoneNumber, "86")
+	if user.PhoneNumber == "" {
+		common.ApiErrorMsg(c, "手机号格式无效")
+		return
+	}
+	if common.PhoneVerificationEnabled {
+		if user.PhoneVerificationCode == "" {
+			common.ApiErrorMsg(c, "请输入短信验证码")
+			return
+		}
+		if !common.VerifyPhoneVerificationCode(user.PhoneNumber, user.PhoneVerificationCode, common.PhoneVerificationPurposeRegister) {
+			common.ApiErrorMsg(c, "短信验证码错误或已过期")
+			return
+		}
+	}
+	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email, user.PhoneNumber)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 		common.SysLog(fmt.Sprintf("CheckUserExistOrDeleted error: %v", err))
@@ -180,11 +235,10 @@ func Register(c *gin.Context) {
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.Username,
+		Email:       user.Email,
+		PhoneNumber: user.PhoneNumber,
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
-	}
-	if common.EmailVerificationEnabled {
-		cleanUser.Email = user.Email
 	}
 	if err := cleanUser.Insert(inviterId); err != nil {
 		common.ApiError(c, err)
@@ -195,6 +249,10 @@ func Register(c *gin.Context) {
 	var insertedUser model.User
 	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
+		return
+	}
+	if err := model.RecordAffiliateSignupFingerprint(insertedUser.Id, user.DeviceFingerprint); err != nil {
+		common.ApiError(c, err)
 		return
 	}
 	// 生成默认令牌
@@ -343,6 +401,48 @@ type TransferAffQuotaRequest struct {
 	Quota int `json:"quota" binding:"required"`
 }
 
+type CreateAffiliateWithdrawalRequest struct {
+	Quota             int    `json:"quota"`
+	PayoutMethod      string `json:"payout_method"`
+	PayoutAccountNote string `json:"payout_account_note"`
+}
+
+type AffiliateWithdrawalReviewRequest struct {
+	Note string `json:"note"`
+}
+
+type AffiliateWithdrawalRejectRequest struct {
+	Reason string `json:"reason"`
+}
+
+type AffiliateWithdrawalPaidRequest struct {
+	PayoutChannel string `json:"payout_channel"`
+	PayoutTradeNo string `json:"payout_trade_no"`
+	AdminNote     string `json:"admin_note"`
+}
+
+type AffiliateUserSettingsRequest struct {
+	AffCode              string   `json:"aff_code"`
+	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent"`
+}
+
+type AffiliateBatchRateRequest struct {
+	UserIds              []int    `json:"user_ids"`
+	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent"`
+	Clear                bool     `json:"clear"`
+}
+
+type AffiliateInviteRelationRequest struct {
+	InviterUserId int  `json:"inviter_user_id"`
+	InviteeUserId int  `json:"invitee_user_id"`
+	Overwrite     bool `json:"overwrite"`
+}
+
+type AffiliateIdentityConfigRequest struct {
+	Enabled bool                          `json:"enabled"`
+	Config  model.AffiliateIdentityConfig `json:"config"`
+}
+
 func TransferAffQuota(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
@@ -392,6 +492,355 @@ func GetAffCode(c *gin.Context) {
 	return
 }
 
+func GetAffiliateRecords(c *gin.Context) {
+	userId := c.GetInt("id")
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.GetUserAffiliateLedgers(userId, pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func GetAffiliateWithdrawals(c *gin.Context) {
+	userId := c.GetInt("id")
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.GetUserAffiliateWithdrawals(userId, pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func CreateAffiliateWithdrawal(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+	var req CreateAffiliateWithdrawalRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	record, err := model.CreateAffiliateWithdrawal(c.GetInt("id"), req.Quota, req.PayoutMethod, req.PayoutAccountNote)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, record)
+}
+
+func GetAffiliateInviteRecords(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.GetAffiliateInviteRecords(pageInfo, getAffiliateRecordFilter(c))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func GetAffiliateRebateRecords(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.GetAffiliateRebateLedgers(pageInfo, getAffiliateRecordFilter(c))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func GetAffiliateTransferRecords(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.GetAffiliateTransferLedgers(pageInfo, getAffiliateRecordFilter(c))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func GetAffiliateWithdrawalRecords(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.GetAffiliateWithdrawalRecords(pageInfo, getAffiliateRecordFilter(c))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func GetAffiliateAdminUsers(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.GetAffiliateAdminUsers(pageInfo, getAffiliateRecordFilter(c))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func LookupAffiliateUsers(c *gin.Context) {
+	records, err := model.LookupAffiliateUsers(c.Query("q"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, records)
+}
+
+func GetAffiliateUserOverview(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiError(c, errors.New("invalid user id"))
+		return
+	}
+	overview, err := model.GetAffiliateUserOverview(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, overview)
+}
+
+func UpdateAffiliateUserSettings(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiError(c, errors.New("invalid user id"))
+		return
+	}
+	var req AffiliateUserSettingsRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.AdminSetAffiliateUserSettings(id, req.AffCode, req.AffRebateRatePercent); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"user_id": id})
+}
+
+func ClearAffiliateUserSettings(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiError(c, errors.New("invalid user id"))
+		return
+	}
+	if err := model.ClearAffiliateUserSettings(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"user_id": id})
+}
+
+func BatchSetAffiliateRate(c *gin.Context) {
+	var req AffiliateBatchRateRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	rate := req.AffRebateRatePercent
+	if req.Clear {
+		rate = nil
+	} else if rate == nil {
+		common.ApiError(c, errors.New("aff_rebate_rate_percent is required"))
+		return
+	}
+	if err := model.AdminBatchSetAffiliateRebateRate(req.UserIds, rate); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"affected": len(req.UserIds)})
+}
+
+func CreateAffiliateInviteRelation(c *gin.Context) {
+	var req AffiliateInviteRelationRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	result, err := model.AdminSetInviteRelation(req.InviterUserId, req.InviteeUserId, req.Overwrite)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func GetAffiliateIdentityConfig(c *gin.Context) {
+	common.ApiSuccess(c, gin.H{
+		"enabled": common.AffiliateIdentityEnabled,
+		"config":  model.GetAffiliateIdentityConfig(),
+	})
+}
+
+func UpdateAffiliateIdentityConfig(c *gin.Context) {
+	var req AffiliateIdentityConfigRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.SaveAffiliateIdentityConfig(req.Enabled, req.Config); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"enabled": common.AffiliateIdentityEnabled,
+		"config":  model.GetAffiliateIdentityConfig(),
+	})
+}
+
+func GetAffiliateFingerprintRecords(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.GetAffiliateFingerprintRecords(pageInfo, getAffiliateRecordFilter(c))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func ApproveAffiliateWithdrawal(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiError(c, errors.New("invalid withdrawal id"))
+		return
+	}
+	var req AffiliateWithdrawalReviewRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	record, err := model.ApproveAffiliateWithdrawal(id, c.GetInt("id"), req.Note)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, record)
+}
+
+func RejectAffiliateWithdrawal(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiError(c, errors.New("invalid withdrawal id"))
+		return
+	}
+	var req AffiliateWithdrawalRejectRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	record, err := model.RejectAffiliateWithdrawal(id, c.GetInt("id"), req.Reason)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, record)
+}
+
+func MarkAffiliateWithdrawalPaid(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiError(c, errors.New("invalid withdrawal id"))
+		return
+	}
+	var req AffiliateWithdrawalPaidRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	record, err := model.MarkAffiliateWithdrawalPaid(id, c.GetInt("id"), req.PayoutChannel, req.PayoutTradeNo, req.AdminNote)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, record)
+}
+
+func FailAffiliateWithdrawal(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiError(c, errors.New("invalid withdrawal id"))
+		return
+	}
+	var req AffiliateWithdrawalRejectRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	record, err := model.FailAffiliateWithdrawal(id, c.GetInt("id"), req.Reason)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, record)
+}
+
+func getAffiliateRecordFilter(c *gin.Context) model.AffiliateRecordFilter {
+	search := c.Query("search")
+	if search == "" {
+		search = c.Query("keyword")
+	}
+	return model.AffiliateRecordFilter{
+		Search:    search,
+		Status:    c.Query("status"),
+		StartTime: parseAffiliateTimeQuery(c.Query("start_time"), c.Query("start_at"), false),
+		EndTime:   parseAffiliateTimeQuery(c.Query("end_time"), c.Query("end_at"), true),
+	}
+}
+
+func parseAffiliateTimeQuery(unixValue string, dateValue string, endOfDay bool) int64 {
+	if unixValue != "" {
+		if parsed, err := strconv.ParseInt(unixValue, 10, 64); err == nil {
+			return parsed
+		}
+	}
+	raw := strings.TrimSpace(dateValue)
+	if raw == "" {
+		return 0
+	}
+	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+		return parsed.Unix()
+	}
+	if parsed, err := time.Parse("2006-01-02", raw); err == nil {
+		if endOfDay {
+			parsed = parsed.Add(24*time.Hour - time.Second)
+		}
+		return parsed.Unix()
+	}
+	return 0
+}
+
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
@@ -417,6 +866,7 @@ func GetSelf(c *gin.Context) {
 		"role":              user.Role,
 		"status":            user.Status,
 		"email":             user.Email,
+		"phone_number":      user.PhoneNumber,
 		"github_id":         user.GitHubId,
 		"discord_id":        user.DiscordId,
 		"oidc_id":           user.OidcId,
@@ -499,6 +949,7 @@ func generateDefaultSidebarConfig(userRole int) string {
 	defaultConfig["personal"] = map[string]interface{}{
 		"enabled":  true,
 		"topup":    true,
+		"myOrders": true,
 		"personal": true,
 	}
 
@@ -506,22 +957,36 @@ func generateDefaultSidebarConfig(userRole int) string {
 	if userRole == common.RoleAdminUser {
 		// 管理员可以访问管理员区域，但不能访问系统设置
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    false, // 管理员不能访问系统设置
+			"enabled":          true,
+			"channel":          true,
+			"models":           true,
+			"deployment":       true,
+			"redemption":       true,
+			"user":             true,
+			"affiliates":       true,
+			"subscription":     true,
+			"ordersDashboard":  true,
+			"orders":           true,
+			"luckyWheel":       true,
+			"rechargeActivity": true,
+			"setting":          false, // 管理员不能访问系统设置
 		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
 		defaultConfig["admin"] = map[string]interface{}{
-			"enabled":    true,
-			"channel":    true,
-			"models":     true,
-			"redemption": true,
-			"user":       true,
-			"setting":    true,
+			"enabled":          true,
+			"channel":          true,
+			"models":           true,
+			"deployment":       true,
+			"redemption":       true,
+			"user":             true,
+			"affiliates":       true,
+			"subscription":     true,
+			"ordersDashboard":  true,
+			"orders":           true,
+			"luckyWheel":       true,
+			"rechargeActivity": true,
+			"setting":          true,
 		}
 	}
 	// 普通用户不包含admin区域
@@ -576,6 +1041,17 @@ func UpdateUser(c *gin.Context) {
 	if err := common.Validate.Struct(&updatedUser); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
+	}
+	if strings.TrimSpace(updatedUser.PhoneNumber) != "" {
+		updatedUser.PhoneNumber = common.NormalizePhoneNumber(updatedUser.PhoneNumber, "86")
+		if updatedUser.PhoneNumber == "" {
+			common.ApiErrorMsg(c, "手机号格式无效")
+			return
+		}
+		if model.IsPhoneNumberTakenByOtherUser(updatedUser.PhoneNumber, updatedUser.Id) {
+			common.ApiErrorMsg(c, "手机号已被使用")
+			return
+		}
 	}
 	originUser, err := model.GetUserById(updatedUser.Id, false)
 	if err != nil {
@@ -735,11 +1211,38 @@ func UpdateSelf(c *gin.Context) {
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 	}
+	if _, exists := requestData["phone_number"]; exists {
+		phoneNumber := common.NormalizePhoneNumber(user.PhoneNumber, "86")
+		if phoneNumber == "" {
+			common.ApiErrorMsg(c, "手机号格式无效")
+			return
+		}
+		if model.IsPhoneNumberTakenByOtherUser(phoneNumber, cleanUser.Id) {
+			common.ApiErrorMsg(c, "手机号已被使用")
+			return
+		}
+		currentUser, err := model.GetUserById(cleanUser.Id, false)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if currentUser.PhoneNumber != phoneNumber && common.PhoneVerificationEnabled {
+			if user.PhoneVerificationCode == "" {
+				common.ApiErrorMsg(c, "请输入短信验证码")
+				return
+			}
+			if !common.VerifyPhoneVerificationCode(phoneNumber, user.PhoneVerificationCode, common.PhoneVerificationPurposeBind) {
+				common.ApiErrorMsg(c, "短信验证码错误或已过期")
+				return
+			}
+		}
+		cleanUser.PhoneNumber = phoneNumber
+	}
 	if user.Password == "$I_LOVE_U" {
 		user.Password = "" // rollback to what it should be
 		cleanUser.Password = ""
 	}
-	updatePassword, err := checkUpdatePassword(user.OriginalPassword, user.Password, cleanUser.Id)
+	updatePassword, err := checkUpdatePassword(user.OriginalPassword, user.Password, user.PhoneVerificationCode, cleanUser.Id)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -756,10 +1259,26 @@ func UpdateSelf(c *gin.Context) {
 	return
 }
 
-func checkUpdatePassword(originalPassword string, newPassword string, userId int) (updatePassword bool, err error) {
+func checkUpdatePassword(originalPassword string, newPassword string, phoneVerificationCode string, userId int) (updatePassword bool, err error) {
+	if newPassword == "" {
+		return false, nil
+	}
 	var currentUser *model.User
 	currentUser, err = model.GetUserById(userId, true)
 	if err != nil {
+		return
+	}
+
+	if phoneVerificationCode != "" {
+		phoneNumber := common.NormalizePhoneNumber(currentUser.PhoneNumber, "86")
+		if phoneNumber == "" {
+			err = fmt.Errorf("当前账号未绑定手机号")
+			return
+		}
+		if common.VerifyPhoneVerificationCode(phoneNumber, phoneVerificationCode, common.PhoneVerificationPurposeChangePassword) {
+			return true, nil
+		}
+		err = fmt.Errorf("短信验证码错误或已过期")
 		return
 	}
 
@@ -767,9 +1286,6 @@ func checkUpdatePassword(originalPassword string, newPassword string, userId int
 	// 支持第一次账号绑定时原密码为空的情况
 	if !common.ValidatePasswordAndHash(originalPassword, currentUser.Password) && currentUser.Password != "" {
 		err = fmt.Errorf("原密码错误")
-		return
-	}
-	if newPassword == "" {
 		return
 	}
 	updatePassword = true
@@ -837,6 +1353,22 @@ func CreateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
+	if strings.TrimSpace(user.PhoneNumber) != "" {
+		user.PhoneNumber = common.NormalizePhoneNumber(user.PhoneNumber, "86")
+		if user.PhoneNumber == "" {
+			common.ApiErrorMsg(c, "手机号格式无效")
+			return
+		}
+	}
+	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email, user.PhoneNumber)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	if exist {
+		common.ApiErrorI18n(c, i18n.MsgUserExists)
+		return
+	}
 	if user.DisplayName == "" {
 		user.DisplayName = user.Username
 	}
@@ -850,6 +1382,8 @@ func CreateUser(c *gin.Context) {
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
+		Email:       user.Email,
+		PhoneNumber: user.PhoneNumber,
 		Role:        user.Role, // 保持管理员设置的角色
 	}
 	if err := cleanUser.Insert(0); err != nil {

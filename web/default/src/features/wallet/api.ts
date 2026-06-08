@@ -30,6 +30,7 @@ import type {
   StripePaymentResponse,
   AffiliateCodeResponse,
   AffiliateTransferResponse,
+  AffiliateRecordsResponse,
   BillingHistoryResponse,
   CompleteOrderRequest,
   CreemPaymentRequest,
@@ -93,6 +94,24 @@ export async function calculateStripeAmount(
   return res.data
 }
 
+export async function calculateWechatPayAmount(
+  request: AmountRequest
+): Promise<AmountResponse> {
+  const res = await api.post('/api/user/wechat-pay/amount', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function calculateAlipayAmount(
+  request: AmountRequest
+): Promise<AmountResponse> {
+  const res = await api.post('/api/user/alipay/amount', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
 /**
  * Request regular payment
  */
@@ -115,6 +134,24 @@ export async function requestStripePayment(
   request: PaymentRequest
 ): Promise<StripePaymentResponse> {
   const res = await api.post('/api/user/stripe/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function requestWechatPayPayment(
+  request: PaymentRequest & { trade_type?: string }
+): Promise<PaymentResponse> {
+  const res = await api.post('/api/user/wechat-pay/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+export async function requestAlipayPayment(
+  request: PaymentRequest & { trade_type?: string }
+): Promise<PaymentResponse> {
+  const res = await api.post('/api/user/alipay/pay', request, {
     skipBusinessError: true,
   } as Record<string, unknown>)
   return res.data
@@ -183,6 +220,21 @@ export async function transferAffiliateQuota(
   request: AffiliateTransferRequest
 ): Promise<AffiliateTransferResponse> {
   const res = await api.post('/api/user/aff_transfer', request)
+  return res.data
+}
+
+/**
+ * Get affiliate reward history for current user
+ */
+export async function getAffiliateRecords(
+  page: number,
+  pageSize: number
+): Promise<AffiliateRecordsResponse> {
+  const params = new URLSearchParams({
+    p: page.toString(),
+    page_size: pageSize.toString(),
+  })
+  const res = await api.get(`/api/user/aff/records?${params.toString()}`)
   return res.data
 }
 

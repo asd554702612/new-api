@@ -167,3 +167,61 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	operation_setting.PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
 }
+
+func TestWechatPayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalEnabled := setting.WechatPayEnabled
+	originalAppID := setting.WechatPayAppID
+	originalMchID := setting.WechatPayMchID
+	originalAPIv3Key := setting.WechatPayAPIv3Key
+	originalPrivateKey := setting.WechatPayPrivateKey
+	originalSerialNo := setting.WechatPayMerchantSerialNo
+	t.Cleanup(func() {
+		setting.WechatPayEnabled = originalEnabled
+		setting.WechatPayAppID = originalAppID
+		setting.WechatPayMchID = originalMchID
+		setting.WechatPayAPIv3Key = originalAPIv3Key
+		setting.WechatPayPrivateKey = originalPrivateKey
+		setting.WechatPayMerchantSerialNo = originalSerialNo
+	})
+
+	setting.WechatPayEnabled = true
+	setting.WechatPayAppID = "wx_app"
+	setting.WechatPayMchID = "mch"
+	setting.WechatPayAPIv3Key = "12345678901234567890123456789012"
+	setting.WechatPayPrivateKey = "private"
+	setting.WechatPayMerchantSerialNo = ""
+	require.False(t, isWechatPayWebhookEnabled())
+
+	setting.WechatPayMerchantSerialNo = "serial"
+	require.True(t, isWechatPayWebhookEnabled())
+
+	setting.WechatPayEnabled = false
+	require.False(t, isWechatPayWebhookEnabled())
+}
+
+func TestAlipayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
+	confirmPaymentComplianceForTest(t)
+	originalEnabled := setting.AlipayEnabled
+	originalAppID := setting.AlipayAppID
+	originalPrivateKey := setting.AlipayPrivateKey
+	originalPublicKey := setting.AlipayPublicKey
+	t.Cleanup(func() {
+		setting.AlipayEnabled = originalEnabled
+		setting.AlipayAppID = originalAppID
+		setting.AlipayPrivateKey = originalPrivateKey
+		setting.AlipayPublicKey = originalPublicKey
+	})
+
+	setting.AlipayEnabled = true
+	setting.AlipayAppID = "app"
+	setting.AlipayPrivateKey = "private"
+	setting.AlipayPublicKey = ""
+	require.False(t, isAlipayWebhookEnabled())
+
+	setting.AlipayPublicKey = "public"
+	require.True(t, isAlipayWebhookEnabled())
+
+	setting.AlipayEnabled = false
+	require.False(t, isAlipayWebhookEnabled())
+}

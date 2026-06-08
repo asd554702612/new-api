@@ -52,6 +52,8 @@ const quotaSchema = z.object({
   PreConsumedQuota: z.coerce.number().min(0),
   QuotaForInviter: z.coerce.number().min(0),
   QuotaForInvitee: z.coerce.number().min(0),
+  AffiliateEnabled: z.boolean(),
+  AffiliateRebateRate: z.coerce.number().min(0).max(100),
   TopUpLink: z.string(),
   general_setting: z.object({
     docs_link: z.string(),
@@ -243,6 +245,59 @@ export function QuotaSettingsSection({
                 )}
               />
             </SettingsFormGridItem>
+
+            <SettingsFormGridItem span='full'>
+              <FormField
+                control={form.control}
+                name='AffiliateEnabled'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>{t('Enable Referral Cashback')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'When enabled, paid orders add cashback quota to the inviter.'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={updateOption.isPending}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+            </SettingsFormGridItem>
+
+            <FormField
+              control={form.control}
+              name='AffiliateRebateRate'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Referral Cashback Rate (%)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={100}
+                      step='0.01'
+                      value={field.value ?? ''}
+                      onChange={handleNumberChange(field.onChange)}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Percentage of paid quota credited as referral cashback')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

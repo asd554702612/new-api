@@ -42,9 +42,21 @@ func TestMain(m *testing.M) {
 		&Channel{},
 		&Ability{},
 		&TopUp{},
+		&AffiliateLedger{},
+		&AffiliateWithdrawal{},
+		&AffiliateIdentity{},
+		&AffiliateSignupFingerprint{},
+		&WeeklyQuotaClaim{},
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
+		&PaymentActivityConfig{},
+		&LuckyWheelSession{},
+		&LuckyWheelDrawRecord{},
+		&LuckyWheelGoldenWindowClaim{},
+		&LuckyWheelInviteBonusEvent{},
+		&RechargeActivityChance{},
+		&RechargeActivityDrawRecord{},
 		&PerfMetric{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
@@ -63,9 +75,21 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM channels")
 		DB.Exec("DELETE FROM abilities")
 		DB.Exec("DELETE FROM top_ups")
+		DB.Exec("DELETE FROM affiliate_ledgers")
+		DB.Exec("DELETE FROM affiliate_withdrawals")
+		DB.Exec("DELETE FROM affiliate_identities")
+		DB.Exec("DELETE FROM affiliate_signup_fingerprints")
+		DB.Exec("DELETE FROM weekly_quota_claims")
 		DB.Exec("DELETE FROM subscription_orders")
 		DB.Exec("DELETE FROM subscription_plans")
 		DB.Exec("DELETE FROM user_subscriptions")
+		DB.Exec("DELETE FROM payment_activity_configs")
+		DB.Exec("DELETE FROM lucky_wheel_sessions")
+		DB.Exec("DELETE FROM lucky_wheel_draw_records")
+		DB.Exec("DELETE FROM lucky_wheel_golden_window_claims")
+		DB.Exec("DELETE FROM lucky_wheel_invite_bonus_events")
+		DB.Exec("DELETE FROM recharge_activity_chances")
+		DB.Exec("DELETE FROM recharge_activity_draw_records")
 		DB.Exec("DELETE FROM perf_metrics")
 	})
 }

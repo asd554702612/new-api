@@ -27,7 +27,16 @@ import {
   Badge,
   Space,
 } from '@douyinfe/semi-ui';
-import { Copy, Users, BarChart2, TrendingUp, Gift, Zap } from 'lucide-react';
+import {
+  BarChart2,
+  Copy,
+  Gift,
+  List,
+  TrendingUp,
+  Users,
+  WalletCards,
+  Zap,
+} from 'lucide-react';
 
 const { Text } = Typography;
 
@@ -38,6 +47,12 @@ const InvitationCard = ({
   setOpenTransfer,
   affLink,
   handleAffLinkClick,
+  onOpenRecords,
+  onOpenWithdraw,
+  onOpenWithdrawals,
+  affiliateEnabled = false,
+  affiliateRebateRate = 0,
+  affiliateWithdrawEnabled = false,
   complianceConfirmed = true,
 }) => {
   return (
@@ -51,7 +66,11 @@ const InvitationCard = ({
           <Typography.Text className='text-lg font-medium'>
             {t('邀请奖励')}
           </Typography.Text>
-          <div className='text-xs'>{t('邀请好友获得额外奖励')}</div>
+          <div className='text-xs'>
+            {affiliateEnabled && affiliateRebateRate > 0
+              ? t('返现比例') + `：${affiliateRebateRate}%`
+              : t('邀请好友获得额外奖励')}
+          </div>
         </div>
       </div>
 
@@ -77,21 +96,60 @@ const InvitationCard = ({
                   <Text strong style={{ color: 'white', fontSize: '16px' }}>
                     {t('收益统计')}
                   </Text>
-                  <Button
-                    type='primary'
-                    theme='solid'
-                    size='small'
-                    disabled={
-                      !complianceConfirmed ||
-                      !userState?.user?.aff_quota ||
-                      userState?.user?.aff_quota <= 0
-                    }
-                    onClick={() => setOpenTransfer(true)}
-                    className='!rounded-lg'
-                  >
-                    <Zap size={12} className='mr-1' />
-                    {t('划转到余额')}
-                  </Button>
+                  <Space>
+                    <Button
+                      theme='solid'
+                      size='small'
+                      onClick={onOpenRecords}
+                      disabled={!onOpenRecords}
+                      className='!rounded-lg'
+                    >
+                      <List size={12} className='mr-1' />
+                      {t('流水')}
+                    </Button>
+                    <Button
+                      theme='solid'
+                      size='small'
+                      onClick={onOpenWithdrawals}
+                      disabled={!onOpenWithdrawals}
+                      className='!rounded-lg'
+                    >
+                      <List size={12} className='mr-1' />
+                      {t('提现记录')}
+                    </Button>
+                    <Button
+                      type='primary'
+                      theme='solid'
+                      size='small'
+                      disabled={
+                        !affiliateWithdrawEnabled ||
+                        !complianceConfirmed ||
+                        !onOpenWithdraw ||
+                        !userState?.user?.aff_quota ||
+                        userState?.user?.aff_quota <= 0
+                      }
+                      onClick={onOpenWithdraw}
+                      className='!rounded-lg'
+                    >
+                      <WalletCards size={12} className='mr-1' />
+                      {t('提现')}
+                    </Button>
+                    <Button
+                      type='primary'
+                      theme='solid'
+                      size='small'
+                      disabled={
+                        !complianceConfirmed ||
+                        !userState?.user?.aff_quota ||
+                        userState?.user?.aff_quota <= 0
+                      }
+                      onClick={() => setOpenTransfer(true)}
+                      className='!rounded-lg'
+                    >
+                      <Zap size={12} className='mr-1' />
+                      {t('划转到余额')}
+                    </Button>
+                  </Space>
                 </div>
                 {!complianceConfirmed && (
                   <Text

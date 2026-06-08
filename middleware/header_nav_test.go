@@ -86,6 +86,14 @@ func TestHeaderNavModuleAuthAllowsDefaultPublicAccess(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 }
 
+func TestHeaderNavModuleAuthRequiresLoginForDefaultRankings(t *testing.T) {
+	withHeaderNavModules(t, "")
+
+	recorder := performHeaderNavRequest(t, HeaderNavModuleAuth("rankings"), false)
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
 func TestHeaderNavModuleAuthRejectsDisabledPricing(t *testing.T) {
 	raw := `{"pricing":{"enabled":false,"requireAuth":false}}`
 	withHeaderNavModules(t, raw)

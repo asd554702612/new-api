@@ -1,0 +1,674 @@
+[
+  {
+    "path": "/Users/mac/work/gepin/new-api/.codex-target-home-desktop-light.png",
+    "data": {
+      "label": "http://127.0.0.1:5175/home",
+      "htmlClass": "",
+      "overflow": 0,
+      "headerCount": 1,
+      "footerCount": 1,
+      "sections": [
+        {
+          "tag": "HEADER",
+          "id": "",
+          "test": "",
+          "y": 0,
+          "h": 76,
+          "w": 1440
+        },
+        {
+          "tag": "SECTION",
+          "id": "top",
+          "test": "home-hero",
+          "y": 100,
+          "h": 1100,
+          "w": 1392
+        },
+        {
+          "tag": "SECTION",
+          "id": "overview",
+          "test": "",
+          "y": 1200,
+          "h": 1150,
+          "w": 1392
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 2350,
+          "h": 2093,
+          "w": 1392
+        },
+        {
+          "tag": "SECTION",
+          "id": "pricing",
+          "test": "",
+          "y": 4482,
+          "h": 305,
+          "w": 1280
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 4827,
+          "h": 568,
+          "w": 1280
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 5435,
+          "h": 506,
+          "w": 1280
+        },
+        {
+          "tag": "FOOTER",
+          "id": "footer",
+          "test": "",
+          "y": 6045,
+          "h": 359,
+          "w": 1440
+        }
+      ],
+      "picks": {
+        "header": {
+          "text": "GPTK首页定价格品购物格品生图API 文档技术社群🇨🇳ZH立即使用",
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 76,
+          "fontSize": "16px",
+          "color": "rgb(2, 6, 23)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "heroTitle": {
+          "text": "让 AI 开发更简单",
+          "x": 80,
+          "y": 439,
+          "w": 608,
+          "h": 69,
+          "fontSize": "69.12px",
+          "color": "rgb(24, 24, 27)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "primary": {
+          "text": "立即开始接入",
+          "x": 80,
+          "y": 878,
+          "w": 160,
+          "h": 56,
+          "fontSize": "16px",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgb(0, 0, 0)"
+        },
+        "overviewKicker": {
+          "text": "为什么选择 GPTK",
+          "x": 657,
+          "y": 1331,
+          "w": 126,
+          "h": 20,
+          "fontSize": "14px",
+          "color": "rgb(113, 113, 122)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "modelSubtitle": {
+          "text": "按场景选择高性能、均衡、低成本或图像能力，统一通过 GPTK 接入。",
+          "x": 112,
+          "y": 3926,
+          "w": 1216,
+          "h": 28,
+          "fontSize": "20px",
+          "color": "rgb(82, 82, 91)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "showcaseSubtitle": {
+          "text": "新版官网保留真实业务表达，用更现代的展示方式承接你的平台优势、客户感知与后续案例内容。",
+          "x": 336,
+          "y": 4911,
+          "w": 768,
+          "h": 24,
+          "fontSize": "16px",
+          "color": "rgb(100, 116, 139)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "footer": {
+          "text": "GPTK企业级国际 API 中转服务，让 AI 开发更简单。微博视知公司产品定价API 文档支持的平台更新日志开发者快速开始SDK & 工具最佳实践API 状态",
+          "x": 0,
+          "y": 6045,
+          "w": 1440,
+          "h": 359,
+          "fontSize": "16px",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgb(10, 16, 32)"
+        }
+      },
+      "imgs": [
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-main.avif",
+          "complete": true,
+          "w": 1275,
+          "h": 1234
+        },
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-side-top.avif",
+          "complete": true,
+          "w": 1254,
+          "h": 1254
+        },
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-side-bottom.avif",
+          "complete": true,
+          "w": 1254,
+          "h": 1254
+        }
+      ]
+    }
+  },
+  {
+    "path": "/Users/mac/work/gepin/new-api/.codex-target-root-desktop-light.png",
+    "data": {
+      "label": "http://127.0.0.1:5175/",
+      "htmlClass": "",
+      "overflow": 0,
+      "headerCount": 1,
+      "footerCount": 1,
+      "sections": [
+        {
+          "tag": "HEADER",
+          "id": "",
+          "test": "",
+          "y": 0,
+          "h": 76,
+          "w": 1440
+        },
+        {
+          "tag": "SECTION",
+          "id": "top",
+          "test": "home-hero",
+          "y": 100,
+          "h": 1100,
+          "w": 1392
+        },
+        {
+          "tag": "SECTION",
+          "id": "overview",
+          "test": "",
+          "y": 1200,
+          "h": 1150,
+          "w": 1392
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 2350,
+          "h": 2093,
+          "w": 1392
+        },
+        {
+          "tag": "SECTION",
+          "id": "pricing",
+          "test": "",
+          "y": 4482,
+          "h": 305,
+          "w": 1280
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 4827,
+          "h": 568,
+          "w": 1280
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 5435,
+          "h": 506,
+          "w": 1280
+        },
+        {
+          "tag": "FOOTER",
+          "id": "footer",
+          "test": "",
+          "y": 6045,
+          "h": 359,
+          "w": 1440
+        }
+      ],
+      "picks": {
+        "header": {
+          "text": "GPTK首页定价格品购物格品生图API 文档技术社群🇨🇳ZH立即使用",
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 76,
+          "fontSize": "16px",
+          "color": "rgb(2, 6, 23)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "heroTitle": {
+          "text": "让 AI 开发更简单",
+          "x": 80,
+          "y": 439,
+          "w": 608,
+          "h": 69,
+          "fontSize": "69.12px",
+          "color": "rgb(24, 24, 27)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "primary": {
+          "text": "立即开始接入",
+          "x": 80,
+          "y": 878,
+          "w": 160,
+          "h": 56,
+          "fontSize": "16px",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgb(0, 0, 0)"
+        },
+        "overviewKicker": {
+          "text": "为什么选择 GPTK",
+          "x": 657,
+          "y": 1331,
+          "w": 126,
+          "h": 20,
+          "fontSize": "14px",
+          "color": "rgb(113, 113, 122)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "modelSubtitle": {
+          "text": "按场景选择高性能、均衡、低成本或图像能力，统一通过 GPTK 接入。",
+          "x": 112,
+          "y": 3926,
+          "w": 1216,
+          "h": 28,
+          "fontSize": "20px",
+          "color": "rgb(82, 82, 91)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "showcaseSubtitle": {
+          "text": "新版官网保留真实业务表达，用更现代的展示方式承接你的平台优势、客户感知与后续案例内容。",
+          "x": 336,
+          "y": 4911,
+          "w": 768,
+          "h": 24,
+          "fontSize": "16px",
+          "color": "rgb(100, 116, 139)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "footer": {
+          "text": "GPTK企业级国际 API 中转服务，让 AI 开发更简单。微博视知公司产品定价API 文档支持的平台更新日志开发者快速开始SDK & 工具最佳实践API 状态",
+          "x": 0,
+          "y": 6045,
+          "w": 1440,
+          "h": 359,
+          "fontSize": "16px",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgb(10, 16, 32)"
+        }
+      },
+      "imgs": [
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-main.avif",
+          "complete": true,
+          "w": 1275,
+          "h": 1234
+        },
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-side-top.avif",
+          "complete": true,
+          "w": 1254,
+          "h": 1254
+        },
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-side-bottom.avif",
+          "complete": true,
+          "w": 1254,
+          "h": 1254
+        }
+      ]
+    }
+  },
+  {
+    "path": "/Users/mac/work/gepin/new-api/.codex-target-home-mobile-light.png",
+    "data": {
+      "label": "http://127.0.0.1:5175/home",
+      "htmlClass": "",
+      "overflow": 0,
+      "headerCount": 1,
+      "footerCount": 1,
+      "sections": [
+        {
+          "tag": "HEADER",
+          "id": "",
+          "test": "",
+          "y": 0,
+          "h": 78,
+          "w": 390
+        },
+        {
+          "tag": "SECTION",
+          "id": "top",
+          "test": "home-hero",
+          "y": 100,
+          "h": 1171,
+          "w": 358
+        },
+        {
+          "tag": "SECTION",
+          "id": "overview",
+          "test": "",
+          "y": 1271,
+          "h": 1668,
+          "w": 358
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 2939,
+          "h": 2706,
+          "w": 358
+        },
+        {
+          "tag": "SECTION",
+          "id": "pricing",
+          "test": "",
+          "y": 5684,
+          "h": 670,
+          "w": 358
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 6394,
+          "h": 1516,
+          "w": 358
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 7950,
+          "h": 710,
+          "w": 358
+        },
+        {
+          "tag": "FOOTER",
+          "id": "footer",
+          "test": "",
+          "y": 8764,
+          "h": 1003,
+          "w": 390
+        }
+      ],
+      "picks": {
+        "header": {
+          "text": "GPTK首页定价格品购物格品生图API 文档技术社群🇨🇳ZH立即使用",
+          "x": 0,
+          "y": 0,
+          "w": 390,
+          "h": 78,
+          "fontSize": "16px",
+          "color": "rgb(2, 6, 23)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "heroTitle": {
+          "text": "让 AI 开发更简单",
+          "x": 71,
+          "y": 398,
+          "w": 248,
+          "h": 37,
+          "fontSize": "36px",
+          "color": "rgb(24, 24, 27)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "primary": {
+          "text": "立即开始接入",
+          "x": 115,
+          "y": 771,
+          "w": 160,
+          "h": 56,
+          "fontSize": "16px",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgb(0, 0, 0)"
+        },
+        "overviewKicker": {
+          "text": "为什么选择 GPTK",
+          "x": 132,
+          "y": 1402,
+          "w": 126,
+          "h": 20,
+          "fontSize": "14px",
+          "color": "rgb(113, 113, 122)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "modelSubtitle": {
+          "text": "按场景选择高性能、均衡、低成本或图像能力，统一通过 GPTK 接入。",
+          "x": 32,
+          "y": 4715,
+          "w": 326,
+          "h": 56,
+          "fontSize": "20px",
+          "color": "rgb(82, 82, 91)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "showcaseSubtitle": {
+          "text": "新版官网保留真实业务表达，用更现代的展示方式承接你的平台优势、客户感知与后续案例内容。",
+          "x": 16,
+          "y": 6514,
+          "w": 358,
+          "h": 56,
+          "fontSize": "14px",
+          "color": "rgb(100, 116, 139)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "footer": {
+          "text": "GPTK企业级国际 API 中转服务，让 AI 开发更简单。微博视知公司产品定价API 文档支持的平台更新日志开发者快速开始SDK & 工具最佳实践API 状态",
+          "x": 0,
+          "y": 8764,
+          "w": 390,
+          "h": 1003,
+          "fontSize": "16px",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgb(10, 16, 32)"
+        }
+      },
+      "imgs": [
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-main.avif",
+          "complete": true,
+          "w": 1275,
+          "h": 1234
+        },
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-side-top.avif",
+          "complete": true,
+          "w": 1254,
+          "h": 1254
+        },
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-side-bottom.avif",
+          "complete": true,
+          "w": 1254,
+          "h": 1254
+        }
+      ]
+    }
+  },
+  {
+    "path": "/Users/mac/work/gepin/new-api/.codex-target-home-desktop-dark.png",
+    "data": {
+      "label": "http://127.0.0.1:5175/home",
+      "htmlClass": "",
+      "overflow": 0,
+      "headerCount": 1,
+      "footerCount": 1,
+      "sections": [
+        {
+          "tag": "HEADER",
+          "id": "",
+          "test": "",
+          "y": 0,
+          "h": 76,
+          "w": 1440
+        },
+        {
+          "tag": "SECTION",
+          "id": "top",
+          "test": "home-hero",
+          "y": 100,
+          "h": 1100,
+          "w": 1392
+        },
+        {
+          "tag": "SECTION",
+          "id": "overview",
+          "test": "",
+          "y": 1200,
+          "h": 1150,
+          "w": 1392
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 2350,
+          "h": 2093,
+          "w": 1392
+        },
+        {
+          "tag": "SECTION",
+          "id": "pricing",
+          "test": "",
+          "y": 4482,
+          "h": 305,
+          "w": 1280
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 4827,
+          "h": 568,
+          "w": 1280
+        },
+        {
+          "tag": "SECTION",
+          "id": "",
+          "test": "",
+          "y": 5435,
+          "h": 506,
+          "w": 1280
+        },
+        {
+          "tag": "FOOTER",
+          "id": "footer",
+          "test": "",
+          "y": 6045,
+          "h": 359,
+          "w": 1440
+        }
+      ],
+      "picks": {
+        "header": {
+          "text": "GPTK首页定价格品购物格品生图API 文档技术社群🇨🇳ZH立即使用",
+          "x": 0,
+          "y": 0,
+          "w": 1440,
+          "h": 76,
+          "fontSize": "16px",
+          "color": "rgb(2, 6, 23)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "heroTitle": {
+          "text": "让 AI 开发更简单",
+          "x": 80,
+          "y": 439,
+          "w": 608,
+          "h": 69,
+          "fontSize": "69.12px",
+          "color": "rgb(24, 24, 27)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "primary": {
+          "text": "立即开始接入",
+          "x": 80,
+          "y": 878,
+          "w": 160,
+          "h": 56,
+          "fontSize": "16px",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgb(0, 0, 0)"
+        },
+        "overviewKicker": {
+          "text": "为什么选择 GPTK",
+          "x": 657,
+          "y": 1331,
+          "w": 126,
+          "h": 20,
+          "fontSize": "14px",
+          "color": "rgb(113, 113, 122)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "modelSubtitle": {
+          "text": "按场景选择高性能、均衡、低成本或图像能力，统一通过 GPTK 接入。",
+          "x": 112,
+          "y": 3926,
+          "w": 1216,
+          "h": 28,
+          "fontSize": "20px",
+          "color": "rgb(82, 82, 91)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "showcaseSubtitle": {
+          "text": "新版官网保留真实业务表达，用更现代的展示方式承接你的平台优势、客户感知与后续案例内容。",
+          "x": 336,
+          "y": 4911,
+          "w": 768,
+          "h": 24,
+          "fontSize": "16px",
+          "color": "rgb(100, 116, 139)",
+          "background": "rgba(0, 0, 0, 0)"
+        },
+        "footer": {
+          "text": "GPTK企业级国际 API 中转服务，让 AI 开发更简单。微博视知公司产品定价API 文档支持的平台更新日志开发者快速开始SDK & 工具最佳实践API 状态",
+          "x": 0,
+          "y": 6045,
+          "w": 1440,
+          "h": 359,
+          "fontSize": "16px",
+          "color": "rgb(255, 255, 255)",
+          "background": "rgb(10, 16, 32)"
+        }
+      },
+      "imgs": [
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-main.avif",
+          "complete": true,
+          "w": 1275,
+          "h": 1234
+        },
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-side-top.avif",
+          "complete": true,
+          "w": 1254,
+          "h": 1254
+        },
+        {
+          "src": "http://127.0.0.1:5175/home/home-hero-side-bottom.avif",
+          "complete": true,
+          "w": 1254,
+          "h": 1254
+        }
+      ]
+    }
+  }
+]

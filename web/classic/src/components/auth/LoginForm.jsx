@@ -49,6 +49,8 @@ import {
   Form,
   Icon,
   Modal,
+  TabPane,
+  Tabs,
 } from '@douyinfe/semi-ui';
 import Title from '@douyinfe/semi-ui/lib/es/typography/title';
 import Text from '@douyinfe/semi-ui/lib/es/typography/text';
@@ -59,6 +61,8 @@ import {
   IconMail,
   IconLock,
   IconKey,
+  IconPhone,
+  IconComment,
 } from '@douyinfe/semi-icons';
 import OIDCIcon from '../common/logo/OIDCIcon';
 import WeChatIcon from '../common/logo/WeChatIcon';
@@ -78,6 +82,8 @@ const LoginForm = () => {
   const [inputs, setInputs] = useState({
     username: '',
     password: '',
+    phone_number: '',
+    sms_code: '',
     wechat_verification_code: '',
   });
   const { username, password } = inputs;
@@ -102,6 +108,9 @@ const LoginForm = () => {
     useState(false);
   const [wechatCodeSubmitLoading, setWechatCodeSubmitLoading] = useState(false);
   const [showTwoFA, setShowTwoFA] = useState(false);
+  const [loginMode, setLoginMode] = useState('password');
+  const [smsCodeLoading, setSmsCodeLoading] = useState(false);
+  const [smsCountdown, setSmsCountdown] = useState(0);
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -167,6 +176,14 @@ const LoginForm = () => {
   }, []);
 
   useEffect(() => {
+    if (smsCountdown <= 0) return undefined;
+    const timer = setInterval(() => {
+      setSmsCountdown((value) => Math.max(value - 1, 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [smsCountdown]);
+
+  useEffect(() => {
     if (searchParams.get('expired')) {
       showError(t('未登录或登录已过期，请重新登录'));
     }
@@ -215,6 +232,38 @@ const LoginForm = () => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   }
 
+  const sendLoginPhoneCode = async () => {
+    if (!inputs.phone_number) {
+      showError(t('请输入手机号！'));
+      return;
+    }
+    if (turnstileEnabled && turnstileToken === '') {
+      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
+      return;
+    }
+    setSmsCodeLoading(true);
+    try {
+      const res = await API.post(
+        `/api/user/phone/verification?turnstile=${turnstileToken}`,
+        {
+          phone_number: inputs.phone_number,
+          purpose: 'sms_login',
+        },
+      );
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('短信验证码已发送'));
+        setSmsCountdown(60);
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(t('发送短信验证码失败，请重试'));
+    } finally {
+      setSmsCodeLoading(false);
+    }
+  };
+
   async function handleSubmit(e) {
     if ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms) {
       showInfo(t('请先阅读并同意用户协议和隐私政策'));
@@ -227,6 +276,37 @@ const LoginForm = () => {
     setSubmitted(true);
     setLoginLoading(true);
     try {
+      if (loginMode === 'sms') {
+        if (!inputs.phone_number || !inputs.sms_code) {
+          showError(t('请输入手机号和短信验证码！'));
+          return;
+        }
+        const res = await API.post(
+          `/api/user/login?turnstile=${turnstileToken}`,
+          {
+            login_type: 'sms',
+            phone_number: inputs.phone_number,
+            sms_code: inputs.sms_code,
+          },
+        );
+        const { success, message, data } = res.data;
+        if (success) {
+          if (data && data.require_2fa) {
+            setShowTwoFA(true);
+            setLoginLoading(false);
+            return;
+          }
+
+          userDispatch({ type: 'login', payload: data });
+          setUserData(data);
+          updateAPI();
+          showSuccess(t('登录成功！'));
+          navigate('/console');
+        } else {
+          showError(message);
+        }
+        return;
+      }
       if (username && password) {
         const res = await API.post(
           `/api/user/login?turnstile=${turnstileToken}`,
@@ -247,7 +327,7 @@ const LoginForm = () => {
           userDispatch({ type: 'login', payload: data });
           setUserData(data);
           updateAPI();
-          showSuccess('登录成功！');
+          showSuccess(t('登录成功！'));
           if (username === 'root' && password === '123456') {
             Modal.error({
               title: '您正在使用默认密码！',
@@ -260,10 +340,10 @@ const LoginForm = () => {
           showError(message);
         }
       } else {
-        showError('请输入用户名和密码！');
+        showError(t('请输入用户名和密码！'));
       }
     } catch (error) {
-      showError('登录失败，请重试');
+      showError(t('登录失败，请重试'));
     } finally {
       setLoginLoading(false);
     }
@@ -497,7 +577,13 @@ const LoginForm = () => {
   // 返回登录页面
   const handleBackToLogin = () => {
     setShowTwoFA(false);
-    setInputs({ username: '', password: '', wechat_verification_code: '' });
+    setInputs({
+      username: '',
+      password: '',
+      phone_number: '',
+      sms_code: '',
+      wechat_verification_code: '',
+    });
   };
 
   const renderOAuthOptions = () => {
@@ -716,6 +802,67 @@ const LoginForm = () => {
     );
   };
 
+  const renderPasswordLoginFields = () => (
+    <>
+      <Form.Input
+        field='username'
+        label={t('用户名 / 邮箱 / 手机号')}
+        placeholder={t('请输入用户名、邮箱或手机号')}
+        name='username'
+        onChange={(value) => handleChange('username', value)}
+        prefix={<IconMail />}
+      />
+
+      <Form.Input
+        field='password'
+        label={t('密码')}
+        placeholder={t('请输入您的密码')}
+        name='password'
+        mode='password'
+        onChange={(value) => handleChange('password', value)}
+        prefix={<IconLock />}
+      />
+    </>
+  );
+
+  const renderSmsLoginFields = () => (
+    <>
+      <Form.Input
+        field='phone_number'
+        label={t('手机号')}
+        placeholder={t('请输入手机号')}
+        name='phone_number'
+        onChange={(value) => handleChange('phone_number', value)}
+        prefix={<IconPhone />}
+      />
+
+      <div className='flex gap-2 items-end'>
+        <div className='flex-1'>
+          <Form.Input
+            field='sms_code'
+            label={t('短信验证码')}
+            placeholder={t('请输入短信验证码')}
+            name='sms_code'
+            onChange={(value) => handleChange('sms_code', value)}
+            prefix={<IconComment />}
+          />
+        </div>
+        <Button
+          onClick={sendLoginPhoneCode}
+          loading={smsCodeLoading}
+          disabled={smsCountdown > 0}
+          className='!rounded-lg mb-[12px]'
+          theme='outline'
+          type='primary'
+        >
+          {smsCountdown > 0
+            ? `${t('重新发送')} (${smsCountdown})`
+            : t('获取验证码')}
+        </Button>
+      </div>
+    </>
+  );
+
   const renderEmailLoginForm = () => {
     return (
       <div className='flex flex-col items-center'>
@@ -745,24 +892,26 @@ const LoginForm = () => {
                 </Button>
               )}
               <Form className='space-y-3'>
-                <Form.Input
-                  field='username'
-                  label={t('用户名或邮箱')}
-                  placeholder={t('请输入您的用户名或邮箱地址')}
-                  name='username'
-                  onChange={(value) => handleChange('username', value)}
-                  prefix={<IconMail />}
-                />
-
-                <Form.Input
-                  field='password'
-                  label={t('密码')}
-                  placeholder={t('请输入您的密码')}
-                  name='password'
-                  mode='password'
-                  onChange={(value) => handleChange('password', value)}
-                  prefix={<IconLock />}
-                />
+                {status.phone_verification_enabled ? (
+                  <Tabs
+                    type='line'
+                    activeKey={loginMode}
+                    onChange={(key) => setLoginMode(key)}
+                  >
+                    <TabPane tab={t('密码登录')} itemKey='password'>
+                      <div className='space-y-3 pt-2'>
+                        {renderPasswordLoginFields()}
+                      </div>
+                    </TabPane>
+                    <TabPane tab={t('短信登录')} itemKey='sms'>
+                      <div className='space-y-3 pt-2'>
+                        {renderSmsLoginFields()}
+                      </div>
+                    </TabPane>
+                  </Tabs>
+                ) : (
+                  renderPasswordLoginFields()
+                )}
 
                 {(hasUserAgreement || hasPrivacyPolicy) && (
                   <div className='pt-4'>

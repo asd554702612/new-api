@@ -55,14 +55,19 @@ const PageLayout = () => {
     '/console/log',
     '/console/redemption',
     '/console/user',
+    '/console/affiliates',
     '/console/token',
     '/console/midjourney',
     '/console/task',
     '/console/models',
+    '/console/rankings',
     '/pricing',
   ];
 
-  const shouldHideFooter = cardProPages.includes(location.pathname);
+  const isHomeRoute =
+    location.pathname === '/' || location.pathname === '/home';
+  const shouldHideFooter =
+    isHomeRoute || cardProPages.includes(location.pathname);
 
   const shouldInnerPadding =
     location.pathname.includes('/console') &&
@@ -154,22 +159,24 @@ const PageLayout = () => {
         overflow: isFixedLayout && !isMobile ? 'hidden' : 'visible',
       }}
     >
-      <Header
-        style={{
-          padding: 0,
-          height: 'auto',
-          lineHeight: 'normal',
-          position: 'fixed',
-          width: '100%',
-          top: 0,
-          zIndex: 100,
-        }}
-      >
-        <HeaderBar
-          onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
-          drawerOpen={drawerOpen}
-        />
-      </Header>
+      {!isHomeRoute && (
+        <Header
+          style={{
+            padding: 0,
+            height: 'auto',
+            lineHeight: 'normal',
+            position: 'fixed',
+            width: '100%',
+            top: 0,
+            zIndex: 100,
+          }}
+        >
+          <HeaderBar
+            onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
+            drawerOpen={drawerOpen}
+          />
+        </Header>
+      )}
       <Layout
         style={{
           overflow: isFixedLayout && !isMobile ? 'auto' : 'visible',

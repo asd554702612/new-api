@@ -35,6 +35,8 @@ export default function SettingsCheckin(props) {
     'checkin_setting.enabled': false,
     'checkin_setting.min_quota': 1000,
     'checkin_setting.max_quota': 10000,
+    'weekly_quota_setting.enabled': false,
+    'weekly_quota_setting.amount': 0,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -139,9 +141,39 @@ export default function SettingsCheckin(props) {
                 />
               </Col>
             </Row>
+          </Form.Section>
+          <Form.Section text={t('周额度领取设置')}>
+            <Typography.Text
+              type='tertiary'
+              style={{ marginBottom: 16, display: 'block' }}
+            >
+              {t('周额度领取允许用户每 7 天领取一次固定额度奖励')}
+            </Typography.Text>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'weekly_quota_setting.enabled'}
+                  label={t('启用周额度领取')}
+                  size='default'
+                  checkedText='｜'
+                  uncheckedText='〇'
+                  onChange={handleFieldChange('weekly_quota_setting.enabled')}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  field={'weekly_quota_setting.amount'}
+                  label={t('每周领取额度')}
+                  placeholder={t('每 7 天可领取的固定额度')}
+                  onChange={handleFieldChange('weekly_quota_setting.amount')}
+                  min={0}
+                  disabled={!inputs['weekly_quota_setting.enabled']}
+                />
+              </Col>
+            </Row>
             <Row>
               <Button size='default' onClick={onSubmit}>
-                {t('保存签到设置')}
+                {t('保存签到与周额度设置')}
               </Button>
             </Row>
           </Form.Section>

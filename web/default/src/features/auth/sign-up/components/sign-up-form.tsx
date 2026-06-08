@@ -20,7 +20,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Send } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -46,7 +46,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PasswordInput } from '@/components/password-input'
 import { Turnstile } from '@/components/turnstile'
-import { register, wechatLoginByCode } from '@/features/auth/api'
+import {
+  register,
+  sendPhoneVerification,
+  wechatLoginByCode,
+} from '@/features/auth/api'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { registerFormSchema } from '@/features/auth/constants'
@@ -65,6 +69,9 @@ export function SignUpForm({
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
+  const [phoneVerificationCode, setPhoneVerificationCode] = useState('')
+  const [isSendingPhoneCode, setIsSendingPhoneCode] = useState(false)
+  const [phoneCodeCountdown, setPhoneCodeCountdown] = useState(0)
   const [agreedToLegal, setAgreedToLegal] = useState(false)
   const [wechatCode, setWeChatCode] = useState('')
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
@@ -94,6 +101,7 @@ export function SignUpForm({
     resolver: zodResolver(registerFormSchema),
     defaultValues: {
       username: '',
+      phone_number: '',
       email: '',
       password: '',
       confirmPassword: '',
@@ -101,7 +109,12 @@ export function SignUpForm({
   })
 
   const emailValue = form.watch('email')
+  const phoneValue = form.watch('phone_number')
   const emailVerificationRequired = !!status?.email_verification
+  const phoneVerificationRequired = Boolean(
+    status?.phone_verification_enabled ??
+      status?.data?.phone_verification_enabled
+  )
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
   const requiresLegalConsent = hasUserAgreement || hasPrivacyPolicy
@@ -141,9 +154,27 @@ export function SignUpForm({
     }
   }, [])
 
+  useEffect(() => {
+    if (phoneCodeCountdown <= 0) return
+    const timer = window.setInterval(() => {
+      setPhoneCodeCountdown((seconds) => Math.max(seconds - 1, 0))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [phoneCodeCountdown])
+
   async function onSubmit(data: z.infer<typeof registerFormSchema>) {
     if (requiresLegalConsent && !agreedToLegal) {
       toast.error(legalConsentErrorMessage)
+      return
+    }
+
+    if (!data.phone_number) {
+      toast.error(t('Please enter your phone number'))
+      return
+    }
+
+    if (phoneVerificationRequired && !phoneVerificationCode) {
+      toast.error(t('Please enter the SMS verification code'))
       return
     }
 
@@ -166,6 +197,8 @@ export function SignUpForm({
       const res = await register({
         username: data.username,
         password: data.password,
+        phone_number: data.phone_number,
+        phone_verification_code: phoneVerificationCode || undefined,
         email: data.email || undefined,
         verification_code: verificationCode || undefined,
         aff_code: getAffiliateCode(),
@@ -187,6 +220,33 @@ export function SignUpForm({
 
   async function handleSendVerificationCode() {
     await sendCode(emailValue || '')
+  }
+
+  async function handleSendPhoneVerificationCode() {
+    if (!phoneValue) {
+      toast.error(t('Please enter your phone number'))
+      return
+    }
+    if (!validateTurnstile()) return
+
+    setIsSendingPhoneCode(true)
+    try {
+      const res = await sendPhoneVerification(
+        phoneValue,
+        'sms_register',
+        turnstileToken
+      )
+      if (res?.success) {
+        toast.success(t('Verification code sent'))
+        setPhoneCodeCountdown(60)
+      } else {
+        toast.error(res?.message || t('Failed to send verification code'))
+      }
+    } catch (_error) {
+      toast.error(t('Failed to send verification code'))
+    } finally {
+      setIsSendingPhoneCode(false)
+    }
   }
 
   const handleOpenWeChatDialog = () => {
@@ -250,6 +310,61 @@ export function SignUpForm({
             </FormItem>
           )}
         />
+
+        <FormField
+          control={form.control}
+          name='phone_number'
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('Phone number')}</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder={t('Enter your phone number')}
+                  autoComplete='tel'
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {phoneVerificationRequired && (
+          <div className='flex items-end gap-2'>
+            <div className='flex-1'>
+              <Input
+                placeholder={t('SMS verification code')}
+                value={phoneVerificationCode}
+                onChange={(e) => setPhoneVerificationCode(e.target.value)}
+                autoComplete='one-time-code'
+              />
+            </div>
+            <Button
+              variant='outline'
+              type='button'
+              className='gap-1.5'
+              disabled={
+                isLoading ||
+                isSendingPhoneCode ||
+                phoneCodeCountdown > 0 ||
+                !phoneValue ||
+                !turnstileReady
+              }
+              onClick={handleSendPhoneVerificationCode}
+            >
+              {isSendingPhoneCode ? (
+                <Loader2 className='h-4 w-4 animate-spin' />
+              ) : (
+                <Send className='h-4 w-4' />
+              )}
+              {phoneCodeCountdown > 0
+                ? t('Resend ({{seconds}}s)', {
+                    seconds: phoneCodeCountdown,
+                  })
+                : t('Send code')}
+            </Button>
+          </div>
+        )}
 
         {/* Password Field */}
         <FormField

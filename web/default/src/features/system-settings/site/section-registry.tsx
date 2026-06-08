@@ -24,6 +24,7 @@ import {
   serializeSidebarModulesAdmin,
 } from '../maintenance/config'
 import { HeaderNavigationSection } from '../maintenance/header-navigation-section'
+import { LeaderboardSettingsSection } from '../maintenance/leaderboard-settings-section'
 import { NoticeSection } from '../maintenance/notice-section'
 import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
 import type { SiteSettings } from '../types'
@@ -73,6 +74,15 @@ const SITE_SECTIONS = [
         />
       )
     },
+  },
+  {
+    id: 'leaderboard-settings',
+    titleKey: 'Leaderboard settings',
+    build: (settings: SiteSettings) => (
+      <LeaderboardSettingsSection
+        defaultValue={settings.UsageLeaderboardIgnoredUserIds ?? '[]'}
+      />
+    ),
   },
   {
     id: 'sidebar-modules',

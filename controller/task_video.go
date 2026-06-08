@@ -177,6 +177,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor channel.TaskAdaptor, cha
 							} else {
 								finalGroupRatio = groupRatio
 							}
+							finalGroupRatio = model.ResolveAffiliateIdentityMultiplier(task.UserId, finalGroupRatio)
 
 							// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio
 							actualQuota := int(float64(taskResult.TotalTokens) * modelRatio * finalGroupRatio)

@@ -294,6 +294,27 @@ export function UsersMutateDrawer({
 
                 <FormField
                   control={form.control}
+                  name='phone_number'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Phone number')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          placeholder={t('Enter phone number')}
+                          autoComplete='tel'
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Used for phone login and SMS verification')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name='password'
                   render={({ field }) => (
                     <FormItem>

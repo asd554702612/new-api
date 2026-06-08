@@ -120,6 +120,17 @@ export async function bindEmail(
   return res.data
 }
 
+export async function sendSelfPhoneVerification(
+  purpose: 'sms_bind' | 'sms_change_password',
+  phoneNumber?: string
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/self/phone/verification', {
+    phone_number: phoneNumber,
+    purpose,
+  })
+  return res.data
+}
+
 /**
  * Bind WeChat account
  */

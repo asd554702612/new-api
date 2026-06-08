@@ -75,6 +75,31 @@ export function isStripePayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.STRIPE
 }
 
+export function isWechatPayPayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.WECHAT_PAY
+}
+
+export function isAlipayDirectPayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.ALIPAY_DIRECT
+}
+
+export function getDefaultOfficialTradeType(paymentType: string): string {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  const isMobile = /Mobile|Android|iPhone|iPad|iPod/i.test(ua)
+  const isWechatBrowser = /MicroMessenger/i.test(ua)
+
+  if (isWechatPayPayment(paymentType)) {
+    if (isWechatBrowser) return 'jsapi'
+    return isMobile ? 'h5' : 'native'
+  }
+
+  if (isAlipayDirectPayment(paymentType)) {
+    return isMobile ? 'wap' : 'page'
+  }
+
+  return ''
+}
+
 /**
  * Check if payment method is Waffo Pancake
  *

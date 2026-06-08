@@ -1,0 +1,40 @@
+# Production compose for new-api on 43.160.242.244.
+# This file intentionally reuses existing sub2api PostgreSQL and Redis services.
+# Do not add postgres, mysql, or redis services here.
+
+services:
+  new-api:
+    image: ${NEW_API_IMAGE:?NEW_API_IMAGE must use an immutable production tag}
+    container_name: new-api
+    restart: unless-stopped
+    command: --log-dir /app/logs
+    ports:
+      - "${NEW_API_PORT:-3000}:3000"
+    volumes:
+      - ./data:/data
+      - ./logs:/app/logs
+    environment:
+      SQL_DSN: ${SQL_DSN:?SQL_DSN must point to the isolated new_api PostgreSQL database}
+      REDIS_CONN_STRING: ${REDIS_CONN_STRING:?REDIS_CONN_STRING must point to sub2api-redis DB 1}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required for production}
+      TZ: ${TZ:-Asia/Shanghai}
+      ERROR_LOG_ENABLED: ${ERROR_LOG_ENABLED:-true}
+      BATCH_UPDATE_ENABLED: ${BATCH_UPDATE_ENABLED:-true}
+      NODE_NAME: ${NODE_NAME:-new-api-node-1}
+      SQL_MAX_OPEN_CONNS: ${SQL_MAX_OPEN_CONNS:-30}
+      SQL_MAX_IDLE_CONNS: ${SQL_MAX_IDLE_CONNS:-10}
+      SQL_MAX_LIFETIME: ${SQL_MAX_LIFETIME:-60}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - sub2api-migrated
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  sub2api-migrated:
+    external: true

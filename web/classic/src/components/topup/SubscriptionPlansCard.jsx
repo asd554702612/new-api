@@ -34,10 +34,16 @@ import { API, showError, showSuccess, renderQuota } from '../../helpers';
 import { getCurrencyConfig } from '../../helpers/render';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
+import OfficialPaymentModal from './modals/OfficialPaymentModal';
 import {
   formatSubscriptionDuration,
   formatSubscriptionResetPeriod,
 } from '../../helpers/subscriptionFormat';
+import {
+  getDefaultOfficialTradeType,
+  isSafeOfficialCheckoutUrl,
+  normalizeOfficialPaymentResult,
+} from '../../helpers/officialPayment';
 
 const { Text } = Typography;
 
@@ -77,6 +83,8 @@ const SubscriptionPlansCard = ({
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
+  enableWechatPayTopUp = false,
+  enableAlipayTopUp = false,
   billingPreference,
   onChangeBillingPreference,
   activeSubscriptions = [],
@@ -89,6 +97,8 @@ const SubscriptionPlansCard = ({
   const [paying, setPaying] = useState(false);
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [officialPaymentOpen, setOfficialPaymentOpen] = useState(false);
+  const [officialPayment, setOfficialPayment] = useState(null);
 
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
@@ -191,6 +201,99 @@ const SubscriptionPlansCard = ({
             : res.data?.message || t('支付失败');
         showError(errorMsg);
       }
+    } catch (e) {
+      showError(t('支付请求失败'));
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const planSupportsOfficialPay = (plan) => {
+    const currency = String(plan?.currency || 'USD').toUpperCase();
+    return currency === '' || currency === 'USD' || currency === 'CNY';
+  };
+
+  const handleOfficialPaymentResponse = async (res) => {
+    if (!res) {
+      showError(t('支付请求失败'));
+      return;
+    }
+    const { message, data } = res.data || {};
+    if (message !== 'success') {
+      const errorMsg =
+        typeof data === 'string' ? data : message || t('支付失败');
+      showError(errorMsg);
+      return;
+    }
+
+    const result = normalizeOfficialPaymentResult(data || {});
+    if (result.kind === 'redirect') {
+      if (isSafeOfficialCheckoutUrl(result.url)) {
+        window.location.href = result.url;
+        closeBuy();
+      } else {
+        showError(t('支付跳转地址不安全'));
+      }
+      return;
+    }
+
+    if (result.kind === 'qr') {
+      setOfficialPayment(result);
+      setOfficialPaymentOpen(true);
+      closeBuy();
+      return;
+    }
+
+    if (result.kind === 'jsapi') {
+      if (
+        typeof window === 'undefined' ||
+        !window.WeixinJSBridge ||
+        !result.jsapiParams
+      ) {
+        showError(t('当前环境无法拉起微信 JSAPI 支付，请换用 H5 或 Native 支付'));
+        return;
+      }
+      window.WeixinJSBridge.invoke(
+        'getBrandWCPayRequest',
+        result.jsapiParams,
+        (response) => {
+          if (response?.err_msg === 'get_brand_wcpay_request:ok') {
+            showSuccess(t('已发起支付，请等待到账'));
+            closeBuy();
+          } else if (
+            response?.err_msg !== 'get_brand_wcpay_request:cancel'
+          ) {
+            showError(t('微信 JSAPI 支付拉起失败'));
+          }
+        },
+      );
+      return;
+    }
+
+    showError(t('支付响应缺少跳转地址或二维码'));
+  };
+
+  const payOfficial = async (paymentType) => {
+    if (!selectedPlan?.plan?.id) {
+      showError(t('请选择订阅套餐'));
+      return;
+    }
+    if (!planSupportsOfficialPay(selectedPlan.plan)) {
+      showError(t('官方微信/支付宝暂不支持该套餐币种'));
+      return;
+    }
+
+    setPaying(true);
+    try {
+      const endpoint =
+        paymentType === 'wechat_pay'
+          ? '/api/subscription/wechat-pay/pay'
+          : '/api/subscription/alipay/pay';
+      const res = await API.post(endpoint, {
+        plan_id: selectedPlan.plan.id,
+        trade_type: getDefaultOfficialTradeType(paymentType),
+      });
+      await handleOfficialPaymentResponse(res);
     } catch (e) {
       showError(t('支付请求失败'));
     } finally {
@@ -673,6 +776,9 @@ const SubscriptionPlansCard = ({
         enableOnlineTopUp={enableOnlineTopUp}
         enableStripeTopUp={enableStripeTopUp}
         enableCreemTopUp={enableCreemTopUp}
+        enableWechatPayTopUp={enableWechatPayTopUp}
+        enableAlipayTopUp={enableAlipayTopUp}
+        officialPaySupported={planSupportsOfficialPay(selectedPlan?.plan)}
         purchaseLimitInfo={
           selectedPlan?.plan?.id
             ? {
@@ -684,6 +790,14 @@ const SubscriptionPlansCard = ({
         onPayStripe={payStripe}
         onPayCreem={payCreem}
         onPayEpay={payEpay}
+        onPayWechatPay={() => payOfficial('wechat_pay')}
+        onPayAlipay={() => payOfficial('alipay_direct')}
+      />
+      <OfficialPaymentModal
+        t={t}
+        visible={officialPaymentOpen}
+        onCancel={() => setOfficialPaymentOpen(false)}
+        payment={officialPayment}
       />
     </>
   );

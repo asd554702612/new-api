@@ -23,8 +23,11 @@ import type { User } from '@/features/users/types'
 // ============================================================================
 
 export interface LoginPayload {
-  username: string
-  password: string
+  username?: string
+  password?: string
+  phone_number?: string
+  sms_code?: string
+  login_type?: 'password' | 'sms'
   turnstile?: string
 }
 
@@ -35,6 +38,8 @@ export interface TwoFAPayload {
 export interface RegisterPayload {
   username: string
   password: string
+  phone_number: string
+  phone_verification_code?: string
   email?: string
   verification_code?: string
   aff_code?: string
@@ -113,6 +118,7 @@ export interface SystemStatus {
     turnstile_check?: boolean
     turnstile_site_key?: string
     email_verification?: boolean
+    phone_verification_enabled?: boolean
     self_use_mode_enabled?: boolean
     display_in_currency?: boolean
     display_token_stat_enabled?: boolean
@@ -156,6 +162,7 @@ export interface SystemStatus {
   turnstile_check?: boolean
   turnstile_site_key?: string
   email_verification?: boolean
+  phone_verification_enabled?: boolean
   self_use_mode_enabled?: boolean
   display_in_currency?: boolean
   display_token_stat_enabled?: boolean

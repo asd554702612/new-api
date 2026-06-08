@@ -90,6 +90,7 @@ export interface PlanPayload {
 export interface SubscriptionPayRequest {
   plan_id: number
   payment_method?: string
+  trade_type?: string
 }
 
 export interface SubscriptionPayResponse {
@@ -100,6 +101,11 @@ export interface SubscriptionPayResponse {
     pay_link?: string
     // Waffo Pancake / Creem hosted checkout URL.
     checkout_url?: string
+    // Official scan-code flows.
+    code_url?: string
+    qr_code?: string
+    trade_type?: string
+    jsapi_params?: Record<string, unknown>
     // Pancake-only: order metadata + self-service buyer session token,
     // surfaced for future flows (refund / cancel from new-api's own UI).
     session_id?: string

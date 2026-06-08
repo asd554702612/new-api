@@ -50,6 +50,8 @@ import {
   IconUser,
   IconLock,
   IconKey,
+  IconPhone,
+  IconComment,
 } from '@douyinfe/semi-icons';
 import {
   onGitHubOAuthClicked,
@@ -65,6 +67,56 @@ import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
 import { SiDiscord } from 'react-icons/si';
 
+const simpleHash = (value) => {
+  let hash = 0;
+  const text = String(value || '');
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash << 5) - hash + text.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16);
+};
+
+const buildDeviceFingerprint = () => {
+  const components = {
+    user_agent: navigator.userAgent || '',
+    language: navigator.language || '',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    screen: `${window.screen?.width || 0}x${window.screen?.height || 0}x${window.screen?.colorDepth || 0}`,
+  };
+  let canvasHash = '';
+  let webglHash = '';
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 220;
+    canvas.height = 40;
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'top';
+    ctx.font = '16px Arial';
+    ctx.fillStyle = '#1f2937';
+    ctx.fillText(`${components.user_agent}|${components.language}`, 2, 2);
+    canvasHash = simpleHash(canvas.toDataURL());
+  } catch {
+    canvasHash = '';
+  }
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const debugInfo = gl?.getExtension('WEBGL_debug_renderer_info');
+    const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : '';
+    const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : '';
+    webglHash = simpleHash(`${vendor}|${renderer}`);
+  } catch {
+    webglHash = '';
+  }
+  return {
+    composite_hash: simpleHash(`${Object.values(components).join('|')}|${canvasHash}|${webglHash}`),
+    canvas_hash: canvasHash,
+    webgl_hash: webglHash,
+    components,
+  };
+};
+
 const RegisterForm = () => {
   let navigate = useNavigate();
   const { t } = useTranslation();
@@ -79,6 +131,8 @@ const RegisterForm = () => {
     password2: '',
     email: '',
     verification_code: '',
+    phone_number: '',
+    phone_verification_code: '',
     wechat_verification_code: '',
   });
   const { username, password, password2 } = inputs;
@@ -97,12 +151,16 @@ const RegisterForm = () => {
   const [emailRegisterLoading, setEmailRegisterLoading] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
   const [verificationCodeLoading, setVerificationCodeLoading] = useState(false);
+  const [phoneVerificationCodeLoading, setPhoneVerificationCodeLoading] =
+    useState(false);
   const [otherRegisterOptionsLoading, setOtherRegisterOptionsLoading] =
     useState(false);
   const [wechatCodeSubmitLoading, setWechatCodeSubmitLoading] = useState(false);
   const [customOAuthLoading, setCustomOAuthLoading] = useState({});
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
+  const [phoneDisableButton, setPhoneDisableButton] = useState(false);
+  const [phoneCountdown, setPhoneCountdown] = useState(60);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [hasUserAgreement, setHasUserAgreement] = useState(false);
   const [hasPrivacyPolicy, setHasPrivacyPolicy] = useState(false);
@@ -169,6 +227,19 @@ const RegisterForm = () => {
   }, [disableButton, countdown]);
 
   useEffect(() => {
+    let countdownInterval = null;
+    if (phoneDisableButton && phoneCountdown > 0) {
+      countdownInterval = setInterval(() => {
+        setPhoneCountdown((value) => value - 1);
+      }, 1000);
+    } else if (phoneCountdown === 0) {
+      setPhoneDisableButton(false);
+      setPhoneCountdown(60);
+    }
+    return () => clearInterval(countdownInterval);
+  }, [phoneDisableButton, phoneCountdown]);
+
+  useEffect(() => {
     return () => {
       if (githubTimeoutRef.current) {
         clearTimeout(githubTimeoutRef.current);
@@ -224,6 +295,17 @@ const RegisterForm = () => {
       showInfo('两次输入的密码不一致');
       return;
     }
+    if (!inputs.phone_number) {
+      showInfo(t('请输入手机号！'));
+      return;
+    }
+    if (
+      status.phone_verification_enabled &&
+      !inputs.phone_verification_code
+    ) {
+      showInfo(t('请输入短信验证码！'));
+      return;
+    }
     if (username && password) {
       if (turnstileEnabled && turnstileToken === '') {
         showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
@@ -235,6 +317,7 @@ const RegisterForm = () => {
           affCode = localStorage.getItem('aff');
         }
         inputs.aff_code = affCode;
+        inputs.device_fingerprint = buildDeviceFingerprint();
         const res = await API.post(
           `/api/user/register?turnstile=${turnstileToken}`,
           inputs,
@@ -276,6 +359,38 @@ const RegisterForm = () => {
       showError('发送验证码失败，请重试');
     } finally {
       setVerificationCodeLoading(false);
+    }
+  };
+
+  const sendPhoneVerificationCode = async () => {
+    if (inputs.phone_number === '') {
+      showError(t('请输入手机号！'));
+      return;
+    }
+    if (turnstileEnabled && turnstileToken === '') {
+      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
+      return;
+    }
+    setPhoneVerificationCodeLoading(true);
+    try {
+      const res = await API.post(
+        `/api/user/phone/verification?turnstile=${turnstileToken}`,
+        {
+          phone_number: inputs.phone_number,
+          purpose: 'sms_register',
+        },
+      );
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('短信验证码已发送'));
+        setPhoneDisableButton(true);
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(t('发送短信验证码失败，请重试'));
+    } finally {
+      setPhoneVerificationCodeLoading(false);
     }
   };
 
@@ -581,6 +696,41 @@ const RegisterForm = () => {
                   onChange={(value) => handleChange('username', value)}
                   prefix={<IconUser />}
                 />
+
+                <Form.Input
+                  field='phone_number'
+                  label={t('手机号')}
+                  placeholder={t('请输入手机号')}
+                  name='phone_number'
+                  onChange={(value) => handleChange('phone_number', value)}
+                  prefix={<IconPhone />}
+                />
+
+                {status.phone_verification_enabled && (
+                  <Form.Input
+                    field='phone_verification_code'
+                    label={t('短信验证码')}
+                    placeholder={t('请输入短信验证码')}
+                    name='phone_verification_code'
+                    onChange={(value) =>
+                      handleChange('phone_verification_code', value)
+                    }
+                    prefix={<IconComment />}
+                    suffix={
+                      <Button
+                        onClick={sendPhoneVerificationCode}
+                        loading={phoneVerificationCodeLoading}
+                        disabled={
+                          phoneDisableButton || phoneVerificationCodeLoading
+                        }
+                      >
+                        {phoneDisableButton
+                          ? `${t('重新发送')} (${phoneCountdown})`
+                          : t('获取验证码')}
+                      </Button>
+                    }
+                  />
+                )}
 
                 <Form.Input
                   field='password'

@@ -24,6 +24,10 @@ For commercial licensing, please contact support@quantumnous.com
 
 export type RankingPeriod = 'today' | 'week' | 'month' | 'year' | 'all'
 
+export type RankingsTab = 'models' | 'users'
+
+export type UserLeaderboardPeriod = 'today' | 'yesterday'
+
 export type RankingCategoryId =
   | 'all'
   | 'programming'
@@ -135,4 +139,23 @@ export type RankingsSnapshot = {
   models_history: ModelHistorySeries
   /** 100%-stacked area history of token share by vendor over the period. */
   vendor_share_history: VendorShareSeries
+}
+
+export type UserLeaderboardItem = {
+  rank: number
+  user_id: number
+  display_name: string
+  tokens: number
+  requests: number
+  quota: number
+}
+
+export type UserLeaderboardSnapshot = {
+  period: UserLeaderboardPeriod
+  start_date: string
+  end_date: string
+  ranking: UserLeaderboardItem[]
+  total_tokens: number
+  total_requests: number
+  total_quota: number
 }

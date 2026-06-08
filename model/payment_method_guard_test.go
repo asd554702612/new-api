@@ -102,6 +102,32 @@ func TestRechargeWaffoPancake_RejectsMismatchedPaymentMethod(t *testing.T) {
 	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 101))
 }
 
+func TestRechargeWechatPay_RejectsMismatchedPaymentProvider(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 102, 0)
+	insertTopUpForPaymentGuardTest(t, "wechat-pay-guard", 102, PaymentProviderAlipay)
+
+	err := RechargeWechatPay("wechat-pay-guard", "127.0.0.1")
+	require.ErrorIs(t, err, ErrPaymentMethodMismatch)
+
+	assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, "wechat-pay-guard"))
+	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 102))
+}
+
+func TestRechargeAlipay_CompletesPendingOrderAndIsIdempotent(t *testing.T) {
+	truncateTables(t)
+
+	insertUserForPaymentGuardTest(t, 103, 0)
+	insertTopUpForPaymentGuardTest(t, "alipay-success", 103, PaymentProviderAlipay)
+
+	require.NoError(t, RechargeAlipay("alipay-success", "127.0.0.1"))
+	require.NoError(t, RechargeAlipay("alipay-success", "127.0.0.1"))
+
+	assert.Equal(t, common.TopUpStatusSuccess, getTopUpStatusForPaymentGuardTest(t, "alipay-success"))
+	assert.Equal(t, int(2*common.QuotaPerUnit), getUserQuotaForPaymentGuardTest(t, 103))
+}
+
 func TestUpdatePendingTopUpStatus_RejectsMismatchedPaymentProvider(t *testing.T) {
 	testCases := []struct {
 		name                    string

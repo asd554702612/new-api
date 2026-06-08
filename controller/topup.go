@@ -23,11 +23,12 @@ import (
 
 func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
+	enableEpay := isEpayTopUpEnabled()
 
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
-	if !complianceConfirmed {
-		payMethods = []map[string]string{}
+	payMethods := []map[string]string{}
+	if complianceConfirmed && enableEpay {
+		payMethods = append(payMethods, operation_setting.PayMethods...)
 	}
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
@@ -73,6 +74,42 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	if isWechatPayTopUpEnabled() {
+		hasWechatPay := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodWechatPay {
+				hasWechatPay = true
+				break
+			}
+		}
+		if !hasWechatPay {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "WeChat Pay",
+				"type":      model.PaymentMethodWechatPay,
+				"color":     "#07C160",
+				"min_topup": strconv.FormatInt(getMinTopup(), 10),
+			})
+		}
+	}
+
+	if isAlipayTopUpEnabled() {
+		hasAlipay := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodAlipayDirect {
+				hasAlipay = true
+				break
+			}
+		}
+		if !hasAlipay {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "Alipay",
+				"type":      model.PaymentMethodAlipayDirect,
+				"color":     "#1677FF",
+				"min_topup": strconv.FormatInt(getMinTopup(), 10),
+			})
+		}
+	}
+
 	// 如果启用了 Waffo 支付，添加到支付方法列表
 	enableWaffo := isWaffoTopUpEnabled()
 	if enableWaffo {
@@ -96,12 +133,23 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"enable_online_topup":              isEpayTopUpEnabled(),
+		"enable_online_topup":              enableEpay,
 		"enable_stripe_topup":              isStripeTopUpEnabled(),
 		"enable_creem_topup":               isCreemTopUpEnabled(),
 		"enable_waffo_topup":               enableWaffo,
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
+		"enable_wechat_pay_topup":          isWechatPayTopUpEnabled(),
+		"enable_alipay_topup":              isAlipayTopUpEnabled(),
 		"enable_redemption":                complianceConfirmed,
+		"affiliate_enabled":                common.AffiliateEnabled,
+		"affiliate_rebate_rate":            common.AffiliateRebateRate,
+		"affiliate_signup_reward_enabled":  common.AffiliateSignupRewardEnabled,
+		"affiliate_signup_reward_quota":    common.AffiliateSignupRewardQuota,
+		"affiliate_identity_enabled":       common.AffiliateIdentityEnabled,
+		"affiliate_withdraw_enabled":       common.AffiliateWithdrawEnabled,
+		"affiliate_withdraw_min_quota":     common.AffiliateWithdrawMinQuota,
+		"affiliate_withdraw_daily_limit":   common.AffiliateWithdrawDailyLimit,
+		"affiliate_withdraw_help_text":     common.AffiliateWithdrawHelpText,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,
 		"waffo_pay_methods": func() interface{} {
@@ -147,6 +195,10 @@ func GetEpayClient() *epay.Client {
 }
 
 func getPayMoney(amount int64, group string) float64 {
+	return getPayMoneyWithUnitPrice(amount, group, operation_setting.Price)
+}
+
+func getPayMoneyWithUnitPrice(amount int64, group string, unitPrice float64) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	// 充值金额以“展示类型”为准：
 	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
@@ -161,7 +213,7 @@ func getPayMoney(amount int64, group string) float64 {
 	}
 
 	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
-	dPrice := decimal.NewFromFloat(operation_setting.Price)
+	dPrice := decimal.NewFromFloat(unitPrice)
 	// apply optional preset discount by the original request amount (if configured), default 1.0
 	discount := 1.0
 	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok {
@@ -383,25 +435,15 @@ func EpayNotify(c *gin.Context) {
 			return
 		}
 		if topUp.Status == common.TopUpStatusPending {
-			if topUp.PaymentMethod != verifyInfo.Type {
-				logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 实际支付方式与订单不同 trade_no=%s order_payment_method=%s actual_type=%s client_ip=%s", verifyInfo.ServiceTradeNo, topUp.PaymentMethod, verifyInfo.Type, c.ClientIP()))
-				topUp.PaymentMethod = verifyInfo.Type
-			}
-			topUp.Status = common.TopUpStatusSuccess
-			err := topUp.Update()
+			originalPaymentMethod := topUp.PaymentMethod
+			originalTopUp := topUp
+			topUp, quotaToAdd, err := model.CompleteEpayTopUp(verifyInfo.ServiceTradeNo, verifyInfo.Type)
 			if err != nil {
-				logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 更新充值订单失败 trade_no=%s user_id=%d client_ip=%s error=%q topup=%q", topUp.TradeNo, topUp.UserId, c.ClientIP(), err.Error(), common.GetJsonString(topUp)))
+				logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 完成充值失败 trade_no=%s user_id=%d client_ip=%s error=%q topup=%q", verifyInfo.ServiceTradeNo, originalTopUp.UserId, c.ClientIP(), err.Error(), common.GetJsonString(originalTopUp)))
 				return
 			}
-			//user, _ := model.GetUserById(topUp.UserId, false)
-			//user.Quota += topUp.Amount * 500000
-			dAmount := decimal.NewFromInt(int64(topUp.Amount))
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
-			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true)
-			if err != nil {
-				logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 更新用户额度失败 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d error=%q topup=%q", topUp.TradeNo, topUp.UserId, c.ClientIP(), quotaToAdd, err.Error(), common.GetJsonString(topUp)))
-				return
+			if originalPaymentMethod != verifyInfo.Type {
+				logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 实际支付方式与订单不同 trade_no=%s order_payment_method=%s actual_type=%s client_ip=%s", verifyInfo.ServiceTradeNo, originalPaymentMethod, verifyInfo.Type, c.ClientIP()))
 			}
 			logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值成功 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d money=%.2f topup=%q", topUp.TradeNo, topUp.UserId, c.ClientIP(), quotaToAdd, topUp.Money, common.GetJsonString(topUp)))
 			model.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), c.ClientIP(), topUp.PaymentMethod, "epay")

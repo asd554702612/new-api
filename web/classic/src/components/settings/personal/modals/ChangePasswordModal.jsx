@@ -18,8 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Input, Modal, Typography } from '@douyinfe/semi-ui';
-import { IconLock } from '@douyinfe/semi-icons';
+import {
+  Button,
+  Input,
+  Modal,
+  Radio,
+  RadioGroup,
+  Typography,
+} from '@douyinfe/semi-ui';
+import { IconComment, IconLock } from '@douyinfe/semi-icons';
 import Turnstile from 'react-turnstile';
 
 const ChangePasswordModal = ({
@@ -32,6 +39,11 @@ const ChangePasswordModal = ({
   turnstileEnabled,
   turnstileSiteKey,
   setTurnstileToken,
+  phoneNumber,
+  sendPasswordPhoneVerificationCode,
+  disableButton,
+  loading,
+  countdown,
 }) => {
   return (
     <Modal
@@ -49,21 +61,71 @@ const ChangePasswordModal = ({
       className='modern-modal'
     >
       <div className='space-y-4 py-4'>
-        <div>
-          <Typography.Text strong className='block mb-2'>
-            {t('原密码')}
-          </Typography.Text>
-          <Input
-            name='original_password'
-            placeholder={t('请输入原密码')}
-            type='password'
-            value={inputs.original_password}
-            onChange={(value) => handleInputChange('original_password', value)}
-            size='large'
-            className='!rounded-lg'
-            prefix={<IconLock />}
-          />
-        </div>
+        <RadioGroup
+          type='button'
+          value={inputs.password_verification_method}
+          onChange={(event) =>
+            handleInputChange(
+              'password_verification_method',
+              event.target.value,
+            )
+          }
+        >
+          <Radio value='password'>{t('原密码验证')}</Radio>
+          <Radio value='phone' disabled={!phoneNumber}>
+            {t('手机号验证')}
+          </Radio>
+        </RadioGroup>
+
+        {inputs.password_verification_method === 'phone' ? (
+          <div>
+            <Typography.Text strong className='block mb-2'>
+              {t('短信验证码')}
+            </Typography.Text>
+            <div className='flex gap-2'>
+              <Input
+                name='password_phone_verification_code'
+                placeholder={t('请输入短信验证码')}
+                value={inputs.password_phone_verification_code}
+                onChange={(value) =>
+                  handleInputChange('password_phone_verification_code', value)
+                }
+                size='large'
+                className='!rounded-lg'
+                prefix={<IconComment />}
+              />
+              <Button
+                onClick={sendPasswordPhoneVerificationCode}
+                disabled={disableButton || loading}
+                loading={loading}
+                type='primary'
+                theme='outline'
+              >
+                {disableButton
+                  ? `${t('重新发送')} (${countdown})`
+                  : t('获取验证码')}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <Typography.Text strong className='block mb-2'>
+              {t('原密码')}
+            </Typography.Text>
+            <Input
+              name='original_password'
+              placeholder={t('请输入原密码')}
+              type='password'
+              value={inputs.original_password}
+              onChange={(value) =>
+                handleInputChange('original_password', value)
+              }
+              size='large'
+              className='!rounded-lg'
+              prefix={<IconLock />}
+            />
+          </div>
+        )}
 
         <div>
           <Typography.Text strong className='block mb-2'>

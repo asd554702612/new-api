@@ -21,17 +21,25 @@ import i18next from 'i18next'
 import { toast } from 'sonner'
 import {
   calculateAmount,
+  calculateAlipayAmount,
   calculateStripeAmount,
+  calculateWechatPayAmount,
   calculateWaffoPancakeAmount,
   requestPayment,
+  requestAlipayPayment,
   requestStripePayment,
+  requestWechatPayPayment,
   isApiSuccess,
 } from '../api'
 import {
+  getDefaultOfficialTradeType,
+  isAlipayDirectPayment,
   isStripePayment,
+  isWechatPayPayment,
   isWaffoPancakePayment,
   submitPaymentForm,
 } from '../lib'
+import type { OfficialPaymentData } from '../types'
 
 // ============================================================================
 // Payment Hook
@@ -41,6 +49,8 @@ export function usePayment() {
   const [amount, setAmount] = useState<number>(0)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const [officialPayment, setOfficialPayment] =
+    useState<OfficialPaymentData | null>(null)
 
   // Calculate payment amount
   const calculatePaymentAmount = useCallback(
@@ -50,11 +60,17 @@ export function usePayment() {
 
         const isStripe = isStripePayment(paymentType)
         const isPancake = isWaffoPancakePayment(paymentType)
+        const isWechatPay = isWechatPayPayment(paymentType)
+        const isAlipayDirect = isAlipayDirectPayment(paymentType)
         const response = isStripe
           ? await calculateStripeAmount({ amount: topupAmount })
-          : isPancake
-            ? await calculateWaffoPancakeAmount({ amount: topupAmount })
-            : await calculateAmount({ amount: topupAmount })
+          : isWechatPay
+            ? await calculateWechatPayAmount({ amount: topupAmount })
+            : isAlipayDirect
+              ? await calculateAlipayAmount({ amount: topupAmount })
+              : isPancake
+                ? await calculateWaffoPancakeAmount({ amount: topupAmount })
+                : await calculateAmount({ amount: topupAmount })
 
         if (isApiSuccess(response) && response.data) {
           const calculatedAmount = parseFloat(response.data)
@@ -82,6 +98,8 @@ export function usePayment() {
         setProcessing(true)
 
         const isStripe = isStripePayment(paymentType)
+        const isWechatPay = isWechatPayPayment(paymentType)
+        const isAlipayDirect = isAlipayDirectPayment(paymentType)
         const amount = Math.floor(topupAmount)
 
         const response = isStripe
@@ -89,19 +107,74 @@ export function usePayment() {
               amount,
               payment_method: 'stripe',
             })
-          : await requestPayment({
-              amount,
-              payment_method: paymentType,
-            })
+          : isWechatPay
+            ? await requestWechatPayPayment({
+                amount,
+                payment_method: paymentType,
+                trade_type: getDefaultOfficialTradeType(paymentType),
+              })
+            : isAlipayDirect
+              ? await requestAlipayPayment({
+                  amount,
+                  payment_method: paymentType,
+                  trade_type: getDefaultOfficialTradeType(paymentType),
+                })
+              : await requestPayment({
+                  amount,
+                  payment_method: paymentType,
+                })
 
         if (!isApiSuccess(response)) {
           toast.error(response.message || i18next.t('Payment request failed'))
           return false
         }
 
+        if ((isWechatPay || isAlipayDirect) && response.data) {
+          const data = response.data as OfficialPaymentData
+          if (data.checkout_url) {
+            window.location.href = data.checkout_url
+            toast.success(i18next.t('Redirecting to payment page...'))
+            return true
+          }
+          if (data.jsapi_params) {
+            const bridge = (
+              window as unknown as {
+                WeixinJSBridge?: {
+                  invoke: (
+                    name: string,
+                    params: Record<string, unknown>,
+                    callback: (res: { err_msg?: string }) => void
+                  ) => void
+                }
+              }
+            ).WeixinJSBridge
+            if (!bridge) {
+              toast.error(i18next.t('WeChat JSAPI is not available'))
+              return false
+            }
+            bridge.invoke(
+              'getBrandWCPayRequest',
+              data.jsapi_params,
+              (res) => {
+                if (res.err_msg === 'get_brand_wcpay_request:ok') {
+                  toast.success(i18next.t('Payment initiated'))
+                } else {
+                  toast.error(i18next.t('Payment request failed'))
+                }
+              }
+            )
+            return true
+          }
+          if (data.code_url || data.qr_code) {
+            setOfficialPayment(data)
+            return true
+          }
+        }
+
         // Handle Stripe payment
-        if (isStripe && response.data?.pay_link) {
-          window.open(response.data.pay_link as string, '_blank')
+        const stripeData = response.data as { pay_link?: string } | undefined
+        if (isStripe && stripeData?.pay_link) {
+          window.open(stripeData.pay_link, '_blank')
           toast.success(i18next.t('Redirecting to payment page...'))
           return true
         }
@@ -110,7 +183,7 @@ export function usePayment() {
         if (!isStripe && response.data) {
           const url = (response as unknown as { url?: string }).url
           if (url) {
-            submitPaymentForm(url, response.data)
+            submitPaymentForm(url, response.data as Record<string, unknown>)
             toast.success(i18next.t('Redirecting to payment page...'))
             return true
           }
@@ -131,8 +204,10 @@ export function usePayment() {
     amount,
     calculating,
     processing,
+    officialPayment,
     calculatePaymentAmount,
     processPayment,
     setAmount,
+    setOfficialPayment,
   }
 }

@@ -84,6 +84,7 @@ export default function SettingsSidebarModulesUser() {
         detail: isSidebarModuleAllowed('console', 'detail'),
         token: isSidebarModuleAllowed('console', 'token'),
         log: isSidebarModuleAllowed('console', 'log'),
+        rankings: isSidebarModuleAllowed('console', 'rankings'),
         midjourney: isSidebarModuleAllowed('console', 'midjourney'),
         task: isSidebarModuleAllowed('console', 'task'),
       };
@@ -94,6 +95,12 @@ export default function SettingsSidebarModulesUser() {
       defaultConfig.personal = {
         enabled: true,
         topup: isSidebarModuleAllowed('personal', 'topup'),
+        myOrders: isSidebarModuleAllowed('personal', 'myOrders'),
+        luckyWheelUser: isSidebarModuleAllowed('personal', 'luckyWheelUser'),
+        rechargeActivityUser: isSidebarModuleAllowed(
+          'personal',
+          'rechargeActivityUser',
+        ),
         personal: isSidebarModuleAllowed('personal', 'personal'),
       };
     }
@@ -107,6 +114,12 @@ export default function SettingsSidebarModulesUser() {
         deployment: isSidebarModuleAllowed('admin', 'deployment'),
         redemption: isSidebarModuleAllowed('admin', 'redemption'),
         user: isSidebarModuleAllowed('admin', 'user'),
+        affiliates: isSidebarModuleAllowed('admin', 'affiliates'),
+        subscription: isSidebarModuleAllowed('admin', 'subscription'),
+        ordersDashboard: isSidebarModuleAllowed('admin', 'ordersDashboard'),
+        orders: isSidebarModuleAllowed('admin', 'orders'),
+        luckyWheel: isSidebarModuleAllowed('admin', 'luckyWheel'),
+        rechargeActivity: isSidebarModuleAllowed('admin', 'rechargeActivity'),
         setting: isSidebarModuleAllowed('admin', 'setting'),
       };
     }
@@ -232,10 +245,13 @@ export default function SettingsSidebarModulesUser() {
           console.log('从API加载的用户配置:', userConf);
 
           // 确保用户配置也经过权限过滤
-          const filteredUserConf = {};
+          const filteredUserConf = generateDefaultConfig();
           Object.keys(userConf).forEach((sectionKey) => {
             if (isSidebarSectionAllowed(sectionKey)) {
-              filteredUserConf[sectionKey] = { ...userConf[sectionKey] };
+              filteredUserConf[sectionKey] = {
+                ...filteredUserConf[sectionKey],
+                ...userConf[sectionKey],
+              };
               // 过滤不允许的模块
               Object.keys(userConf[sectionKey]).forEach((moduleKey) => {
                 if (
@@ -312,6 +328,11 @@ export default function SettingsSidebarModulesUser() {
         { key: 'token', title: t('令牌管理'), description: t('API令牌管理') },
         { key: 'log', title: t('使用日志'), description: t('API使用记录') },
         {
+          key: 'rankings',
+          title: t('排行榜'),
+          description: t('模型与用户消耗排行榜'),
+        },
+        {
           key: 'midjourney',
           title: t('绘图日志'),
           description: t('绘图任务记录'),
@@ -325,6 +346,21 @@ export default function SettingsSidebarModulesUser() {
       description: t('用户个人功能'),
       modules: [
         { key: 'topup', title: t('钱包管理'), description: t('余额充值管理') },
+        {
+          key: 'myOrders',
+          title: t('我的订单'),
+          description: t('查看个人充值和订阅支付订单'),
+        },
+        {
+          key: 'luckyWheelUser',
+          title: t('转盘活动'),
+          description: t('查看并使用个人转盘抽奖机会'),
+        },
+        {
+          key: 'rechargeActivityUser',
+          title: t('充值活动'),
+          description: t('查看并使用个人充值活动机会'),
+        },
         {
           key: 'personal',
           title: t('个人设置'),
@@ -350,6 +386,36 @@ export default function SettingsSidebarModulesUser() {
           description: t('兑换码生成管理'),
         },
         { key: 'user', title: t('用户管理'), description: t('用户账户管理') },
+        {
+          key: 'affiliates',
+          title: t('邀请返利'),
+          description: t('邀请关系、返利和提现记录'),
+        },
+        {
+          key: 'subscription',
+          title: t('订阅管理'),
+          description: t('订阅套餐管理'),
+        },
+        {
+          key: 'ordersDashboard',
+          title: t('支付概览'),
+          description: t('支付订单统计和收入趋势'),
+        },
+        {
+          key: 'orders',
+          title: t('订单管理'),
+          description: t('统一管理充值和订阅支付订单'),
+        },
+        {
+          key: 'luckyWheel',
+          title: t('转盘活动'),
+          description: t('支付完成后的转盘机会配置'),
+        },
+        {
+          key: 'rechargeActivity',
+          title: t('充值活动'),
+          description: t('充值奖励和会员等级活动配置'),
+        },
         {
           key: 'setting',
           title: t('系统设置'),

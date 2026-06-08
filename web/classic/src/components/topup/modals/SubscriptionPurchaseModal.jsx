@@ -29,7 +29,7 @@ import {
   Tooltip,
 } from '@douyinfe/semi-ui';
 import { Crown, CalendarClock, Package } from 'lucide-react';
-import { SiStripe } from 'react-icons/si';
+import { SiAlipay, SiStripe, SiWechat } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
 import { renderQuota } from '../../../helpers';
 import { getCurrencyConfig } from '../../../helpers/render';
@@ -52,10 +52,15 @@ const SubscriptionPurchaseModal = ({
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
+  enableWechatPayTopUp = false,
+  enableAlipayTopUp = false,
+  officialPaySupported = true,
   purchaseLimitInfo = null,
   onPayStripe,
   onPayCreem,
   onPayEpay,
+  onPayWechatPay,
+  onPayAlipay,
 }) => {
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
@@ -69,7 +74,12 @@ const SubscriptionPurchaseModal = ({
   const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
-  const hasAnyPayment = hasStripe || hasCreem || hasEpay;
+  const hasWechatPay = enableWechatPayTopUp && officialPaySupported;
+  const hasAlipayDirect = enableAlipayTopUp && officialPaySupported;
+  const hasOfficialDisabledByCurrency =
+    (enableWechatPayTopUp || enableAlipayTopUp) && !officialPaySupported;
+  const hasAnyPayment =
+    hasStripe || hasCreem || hasEpay || hasWechatPay || hasAlipayDirect;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
@@ -186,8 +196,8 @@ const SubscriptionPurchaseModal = ({
               </Text>
 
               {/* Stripe / Creem */}
-              {(hasStripe || hasCreem) && (
-                <div className='flex gap-2'>
+              {(hasStripe || hasCreem || hasWechatPay || hasAlipayDirect) && (
+                <div className='flex flex-wrap gap-2'>
                   {hasStripe && (
                     <Button
                       theme='light'
@@ -212,7 +222,40 @@ const SubscriptionPurchaseModal = ({
                       Creem
                     </Button>
                   )}
+                  {hasWechatPay && (
+                    <Button
+                      theme='light'
+                      className='flex-1'
+                      icon={<SiWechat size={14} color='#07C160' />}
+                      onClick={onPayWechatPay}
+                      loading={paying}
+                      disabled={purchaseLimitReached}
+                    >
+                      {t('微信支付')}
+                    </Button>
+                  )}
+                  {hasAlipayDirect && (
+                    <Button
+                      theme='light'
+                      className='flex-1'
+                      icon={<SiAlipay size={14} color='#1677FF' />}
+                      onClick={onPayAlipay}
+                      loading={paying}
+                      disabled={purchaseLimitReached}
+                    >
+                      {t('支付宝')}
+                    </Button>
+                  )}
                 </div>
+              )}
+
+              {hasOfficialDisabledByCurrency && (
+                <Banner
+                  type='warning'
+                  description={t('官方微信/支付宝暂不支持该套餐币种')}
+                  className='!rounded-xl'
+                  closeIcon={null}
+                />
               )}
 
               {/* 易支付 */}

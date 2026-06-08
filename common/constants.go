@@ -18,6 +18,7 @@ var SystemName = "New API"
 var Footer = ""
 var Logo = ""
 var TopUpLink = ""
+var SupportContactInfo = ""
 
 var themeValue atomic.Value // stores string; safe for concurrent read/write
 
@@ -84,6 +85,7 @@ var MaxRecentItems = 1000
 var PasswordLoginEnabled = true
 var PasswordRegisterEnabled = true
 var EmailVerificationEnabled = false
+var PhoneVerificationEnabled = false
 var GitHubOAuthEnabled = false
 var LinuxDOOAuthEnabled = false
 var WeChatAuthEnabled = false
@@ -144,6 +146,16 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+var AffiliateEnabled = false
+var AffiliateRebateRate = 0.0
+var AffiliateSignupRewardEnabled = false
+var AffiliateSignupRewardQuota = 0
+var AffiliateIdentityEnabled = false
+var AffiliateIdentityConfig = ""
+var AffiliateWithdrawEnabled = false
+var AffiliateWithdrawMinQuota = int(QuotaPerUnit)
+var AffiliateWithdrawDailyLimit = 3
+var AffiliateWithdrawHelpText = ""
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

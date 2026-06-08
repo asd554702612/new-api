@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
@@ -42,6 +43,16 @@ func TestStatus(c *gin.Context) {
 func GetStatus(c *gin.Context) {
 
 	cs := console_setting.GetConsoleSetting()
+	luckyWheelEnabled, _, luckyWheelErr := model.GetLuckyWheelConfig()
+	if luckyWheelErr != nil {
+		common.SysLog("failed to get lucky wheel status: " + luckyWheelErr.Error())
+		luckyWheelEnabled = false
+	}
+	rechargeActivityEnabled, _, rechargeActivityErr := model.GetRechargeActivityConfig()
+	if rechargeActivityErr != nil {
+		common.SysLog("failed to get recharge activity status: " + rechargeActivityErr.Error())
+		rechargeActivityEnabled = false
+	}
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
 
@@ -52,6 +63,7 @@ func GetStatus(c *gin.Context) {
 		"version":                     common.Version,
 		"start_time":                  common.StartTime,
 		"email_verification":          common.EmailVerificationEnabled,
+		"phone_verification_enabled":  common.PhoneVerificationEnabled,
 		"github_oauth":                common.GitHubOAuthEnabled,
 		"github_client_id":            common.GitHubClientId,
 		"discord_oauth":               system_setting.GetDiscordSettings().Enabled,
@@ -65,6 +77,7 @@ func GetStatus(c *gin.Context) {
 		"system_name":                 common.SystemName,
 		"logo":                        common.Logo,
 		"footer_html":                 common.Footer,
+		"support_contact_info":        common.SupportContactInfo,
 		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
 		"wechat_login":                common.WeChatAuthEnabled,
 		"server_address":              system_setting.ServerAddress,
@@ -120,6 +133,8 @@ func GetStatus(c *gin.Context) {
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
 		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
+		"lucky_wheel_enabled":         luckyWheelEnabled,
+		"recharge_activity_enabled":   rechargeActivityEnabled,
 	}
 
 	// 根据启用状态注入可选内容
@@ -167,6 +182,96 @@ func GetStatus(c *gin.Context) {
 		"data":    data,
 	})
 	return
+}
+
+type phoneVerificationRequest struct {
+	PhoneNumber string `json:"phone_number"`
+	Purpose     string `json:"purpose"`
+}
+
+func SendPhoneVerification(c *gin.Context) {
+	var req phoneVerificationRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	phoneNumber := common.NormalizePhoneNumber(req.PhoneNumber, "86")
+	if phoneNumber == "" {
+		common.ApiErrorMsg(c, "手机号格式无效")
+		return
+	}
+	if !common.PhoneVerificationEnabled {
+		common.ApiErrorMsg(c, "手机验证未启用")
+		return
+	}
+
+	purpose := strings.TrimSpace(req.Purpose)
+	switch purpose {
+	case common.PhoneVerificationPurposeLogin:
+		if !model.IsPhoneNumberAlreadyTaken(phoneNumber) {
+			common.ApiErrorMsg(c, "手机号未注册")
+			return
+		}
+	case common.PhoneVerificationPurposeRegister:
+		if model.IsPhoneNumberAlreadyTaken(phoneNumber) {
+			common.ApiErrorMsg(c, "手机号已被使用")
+			return
+		}
+	default:
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+
+	if err := common.SendPhoneVerificationCode(c.Request.Context(), phoneNumber, purpose); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"countdown": 60})
+}
+
+func SendSelfPhoneVerification(c *gin.Context) {
+	var req phoneVerificationRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if !common.PhoneVerificationEnabled {
+		common.ApiErrorMsg(c, "手机验证未启用")
+		return
+	}
+	userId := c.GetInt("id")
+	purpose := strings.TrimSpace(req.Purpose)
+	phoneNumber := common.NormalizePhoneNumber(req.PhoneNumber, "86")
+	switch purpose {
+	case common.PhoneVerificationPurposeBind:
+		if phoneNumber == "" {
+			common.ApiErrorMsg(c, "手机号格式无效")
+			return
+		}
+		if model.IsPhoneNumberTakenByOtherUser(phoneNumber, userId) {
+			common.ApiErrorMsg(c, "手机号已被使用")
+			return
+		}
+	case common.PhoneVerificationPurposeChangePassword:
+		user, err := model.GetUserById(userId, false)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		phoneNumber = common.NormalizePhoneNumber(user.PhoneNumber, "86")
+		if phoneNumber == "" {
+			common.ApiErrorMsg(c, "当前账号未绑定手机号")
+			return
+		}
+	default:
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if err := common.SendPhoneVerificationCode(c.Request.Context(), phoneNumber, purpose); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"countdown": 60})
 }
 
 func GetNotice(c *gin.Context) {

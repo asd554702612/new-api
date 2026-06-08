@@ -37,6 +37,7 @@ import {
 import {
   IconLink,
   IconMail,
+  IconPhone,
   IconDelete,
   IconGithubLogo,
 } from '@douyinfe/semi-icons';
@@ -86,6 +87,7 @@ const UserBindingManagementModal = ({
         const userData = userRes.data.data || {};
         setBuiltInBindings({
           email: userData.email || '',
+          phone_number: userData.phone_number || '',
           github_id: userData.github_id || '',
           discord_id: userData.discord_id || '',
           oidc_id: userData.oidc_id || '',
@@ -201,6 +203,19 @@ const UserBindingManagementModal = ({
       value: getBuiltInBindingValue('email'),
       icon: (
         <IconMail
+          size='default'
+          className='text-slate-600 dark:text-slate-300'
+        />
+      ),
+    },
+    {
+      key: 'phone',
+      field: 'phone_number',
+      name: t('手机号'),
+      enabled: Boolean(statusInfo.phone_verification_enabled),
+      value: getBuiltInBindingValue('phone_number'),
+      icon: (
+        <IconPhone
           size='default'
           className='text-slate-600 dark:text-slate-300'
         />

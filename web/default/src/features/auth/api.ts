@@ -42,6 +42,9 @@ export async function login(payload: LoginPayload) {
     {
       username: payload.username,
       password: payload.password,
+      phone_number: payload.phone_number,
+      sms_code: payload.sms_code,
+      login_type: payload.login_type,
     }
   )
   return res.data
@@ -119,6 +122,21 @@ export async function sendEmailVerification(
   const res = await api.get('/api/verification', {
     params: { email, turnstile },
   })
+  return res.data
+}
+
+export async function sendPhoneVerification(
+  phoneNumber: string,
+  purpose: 'sms_login' | 'sms_register',
+  turnstile?: string
+): Promise<ApiResponse> {
+  const res = await api.post(
+    `/api/user/phone/verification?turnstile=${turnstile ?? ''}`,
+    {
+      phone_number: phoneNumber,
+      purpose,
+    }
+  )
   return res.data
 }
 

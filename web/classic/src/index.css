@@ -25,8 +25,8 @@ body.sidebar-collapsed {
 }
 
 body {
-  font-family: Lato, 'Helvetica Neue', Arial, Helvetica, 'Microsoft YaHei',
-    sans-serif;
+  font-family:
+    Lato, 'Helvetica Neue', Arial, Helvetica, 'Microsoft YaHei', sans-serif;
   color: var(--semi-color-text-0);
   background-color: var(--semi-color-bg-0);
 }
@@ -71,8 +71,8 @@ body {
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family:
+    source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
 
 /* ==================== 布局相关样式 ==================== */
@@ -389,7 +389,9 @@ code {
   line-height: 1;
   background-color: var(--semi-color-fill-0);
   color: var(--semi-color-text-2);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .sbg-badge-active {
@@ -829,11 +831,8 @@ html:not(.dark) .blur-ball-teal {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(
-      circle at -5% -10%,
-      var(--pb1) 0%,
-      transparent 60%
-    ),
+  background:
+    radial-gradient(circle at -5% -10%, var(--pb1) 0%, transparent 60%),
     radial-gradient(circle at 105% -10%, var(--pb2) 0%, transparent 55%),
     radial-gradient(circle at 5% 110%, var(--pb3) 0%, transparent 55%),
     radial-gradient(circle at 105% 110%, var(--pb4) 0%, transparent 50%);
@@ -907,7 +906,8 @@ html.dark .with-pastel-balls::before {
     max-width: 80px;
   }
 
-  .semi-input-prefix-text, .semi-input-suffix-text {
+  .semi-input-prefix-text,
+  .semi-input-suffix-text {
     margin: 0;
   }
 
@@ -975,6 +975,59 @@ html.dark .with-pastel-balls::before {
 .semi-card-header,
 .semi-card-body {
   padding: 10px !important;
+}
+
+/* ==================== 排行榜页面 ==================== */
+.rankings-page .semi-card-header-wrapper {
+  align-items: center;
+  gap: 12px;
+}
+
+.rankings-page .semi-card-header-extra {
+  min-width: 0;
+}
+
+.rankings-page .semi-space {
+  flex-wrap: wrap;
+}
+
+.rankings-page .rankings-table-section {
+  width: 100%;
+}
+
+.rankings-page .rankings-table-section + .rankings-table-section {
+  padding-top: 14px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.rankings-page .rankings-table-section-title {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  margin-bottom: 8px;
+}
+
+.rankings-page .semi-table {
+  width: 100%;
+}
+
+.rankings-page .semi-table-thead .semi-table-row-head {
+  white-space: nowrap;
+}
+
+.rankings-page .semi-table-cell-text {
+  white-space: nowrap;
+}
+
+.rankings-page .semi-table-body,
+.rankings-page .semi-table-container {
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  .rankings-page {
+    margin-top: 56px;
+  }
 }
 
 /* ==================== 使用日志: channel affinity tag ==================== */
@@ -1045,4 +1098,6 @@ html.dark .with-pastel-balls::before {
   }
 }
 
-.ec-dbcd0a3c01b55203 { forced-color-adjust: auto; }
+.ec-dbcd0a3c01b55203 {
+  forced-color-adjust: auto;
+}

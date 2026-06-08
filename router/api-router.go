@@ -38,6 +38,7 @@ func SetApiRouter(router *gin.Engine) {
 			perfMetricsRoute.GET("", controller.GetPerfMetrics)
 		}
 		apiRouter.GET("/rankings", middleware.HeaderNavModuleAuth("rankings"), controller.GetRankings)
+		apiRouter.GET("/rankings/users", middleware.HeaderNavModuleAuth("rankings"), controller.GetUserRankings)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), controller.ResetPassword)
@@ -56,6 +57,10 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/stripe/webhook", controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
+		apiRouter.POST("/wechat-pay/notify", controller.WechatPayNotify)
+		apiRouter.POST("/alipay/notify", controller.AlipayNotify)
+		apiRouter.GET("/alipay/return", controller.AlipayReturn)
+		apiRouter.POST("/alipay/return", controller.AlipayReturn)
 		// :env separates test vs prod URLs so the operator can register each
 		// in Pancake's matching webhook slot; handler enforces env match.
 		apiRouter.POST("/waffo-pancake/webhook/:env", controller.WaffoPancakeWebhook)
@@ -63,8 +68,45 @@ func SetApiRouter(router *gin.Engine) {
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), controller.UniversalVerify)
 
+		paymentRoute := apiRouter.Group("/payment")
+		{
+			paymentUserRoute := paymentRoute.Group("/")
+			paymentUserRoute.Use(middleware.UserAuth())
+			{
+				paymentUserRoute.GET("/orders/my", controller.GetMyPaymentOrders)
+				paymentUserRoute.GET("/orders/:order_type/:id", controller.GetMyPaymentOrderDetail)
+				paymentUserRoute.POST("/orders/:order_type/:id/cancel", middleware.CriticalRateLimit(), controller.CancelMyPaymentOrder)
+				paymentUserRoute.POST("/orders/:order_type/:id/refund-request", middleware.CriticalRateLimit(), controller.RequestMyPaymentOrderRefund)
+				paymentUserRoute.GET("/lucky-wheel", controller.GetLuckyWheelSummary)
+				paymentUserRoute.POST("/lucky-wheel/draw", middleware.CriticalRateLimit(), controller.DrawLuckyWheel)
+				paymentUserRoute.GET("/recharge-activity", controller.GetRechargeActivitySummary)
+				paymentUserRoute.POST("/recharge-activity/draw", middleware.CriticalRateLimit(), controller.DrawRechargeActivity)
+			}
+			paymentAdminRoute := paymentRoute.Group("/admin")
+			paymentAdminRoute.Use(middleware.AdminAuth())
+			{
+				paymentAdminRoute.GET("/dashboard", controller.AdminGetPaymentDashboard)
+				paymentAdminRoute.GET("/orders", controller.AdminListPaymentOrders)
+				paymentAdminRoute.GET("/orders/:order_type/:id", controller.AdminGetPaymentOrderDetail)
+				paymentAdminRoute.POST("/orders/:order_type/:id/cancel", middleware.CriticalRateLimit(), controller.AdminCancelPaymentOrder)
+				paymentAdminRoute.POST("/orders/:order_type/:id/retry", middleware.CriticalRateLimit(), controller.AdminRetryPaymentOrder)
+				paymentAdminRoute.POST("/orders/:order_type/:id/refund", middleware.CriticalRateLimit(), controller.AdminRefundPaymentOrder)
+				paymentAdminRoute.GET("/lucky-wheel/config", controller.AdminGetLuckyWheelConfig)
+				paymentAdminRoute.PUT("/lucky-wheel/config", controller.AdminUpdateLuckyWheelConfig)
+				paymentAdminRoute.GET("/lucky-wheel/stats", controller.AdminGetLuckyWheelStats)
+				paymentAdminRoute.GET("/recharge-activity/config", controller.AdminGetRechargeActivityConfig)
+				paymentAdminRoute.PUT("/recharge-activity/config", controller.AdminUpdateRechargeActivityConfig)
+				paymentAdminRoute.GET("/recharge-activity/stats", controller.AdminGetRechargeActivityStats)
+				paymentAdminRoute.PUT("/recharge-activity/records/:id/fulfillment", middleware.CriticalRateLimit(), controller.AdminUpdateRechargeActivityRecordFulfillment)
+				paymentAdminRoute.GET("/activities/:activity_type/config", controller.AdminGetPaymentActivityConfig)
+				paymentAdminRoute.PUT("/activities/:activity_type/config", controller.AdminUpdatePaymentActivityConfig)
+				paymentAdminRoute.GET("/activities/:activity_type/stats", controller.AdminGetPaymentActivityStats)
+			}
+		}
+
 		userRoute := apiRouter.Group("/user")
 		{
+			userRoute.POST("/phone/verification", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPhoneVerification)
 			userRoute.POST("/register", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Register)
 			userRoute.POST("/login", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.Login)
 			userRoute.POST("/login/2fa", middleware.CriticalRateLimit(), controller.Verify2FALogin)
@@ -82,6 +124,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/self/groups", controller.GetUserGroups)
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)
+				selfRoute.POST("/self/phone/verification", middleware.CriticalRateLimit(), controller.SendSelfPhoneVerification)
 				selfRoute.PUT("/self", controller.UpdateSelf)
 				selfRoute.DELETE("/self", controller.DeleteSelf)
 				selfRoute.GET("/token", controller.GenerateAccessToken)
@@ -92,6 +135,7 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/passkey/verify/finish", controller.PasskeyVerifyFinish)
 				selfRoute.DELETE("/passkey", controller.PasskeyDelete)
 				selfRoute.GET("/aff", controller.GetAffCode)
+				selfRoute.GET("/aff/records", controller.GetAffiliateRecords)
 				selfRoute.GET("/topup/info", controller.GetTopUpInfo)
 				selfRoute.GET("/topup/self", controller.GetUserTopUps)
 				selfRoute.POST("/topup", middleware.CriticalRateLimit(), controller.TopUp)
@@ -99,12 +143,18 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/amount", controller.RequestAmount)
 				selfRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.RequestStripePay)
 				selfRoute.POST("/stripe/amount", controller.RequestStripeAmount)
+				selfRoute.POST("/wechat-pay/amount", controller.RequestWechatPayAmount)
+				selfRoute.POST("/wechat-pay/pay", middleware.CriticalRateLimit(), controller.RequestWechatPay)
+				selfRoute.POST("/alipay/amount", controller.RequestAlipayAmount)
+				selfRoute.POST("/alipay/pay", middleware.CriticalRateLimit(), controller.RequestAlipay)
 				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.RequestCreemPay)
 				selfRoute.POST("/waffo/amount", controller.RequestWaffoAmount)
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPay)
 				selfRoute.POST("/waffo-pancake/amount", controller.RequestWaffoPancakeAmount)
 				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPancakePay)
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
+				selfRoute.GET("/aff/withdrawals", controller.GetAffiliateWithdrawals)
+				selfRoute.POST("/aff/withdrawals", controller.CreateAffiliateWithdrawal)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
 				// 2FA routes
@@ -118,6 +168,10 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/checkin", controller.GetCheckinStatus)
 				selfRoute.POST("/checkin", middleware.TurnstileCheck(), controller.DoCheckin)
 
+				// Weekly quota claim routes
+				selfRoute.GET("/weekly_quota", controller.GetWeeklyQuotaStatus)
+				selfRoute.POST("/weekly_quota", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.ClaimWeeklyQuota)
+
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
@@ -129,6 +183,24 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
+				adminRoute.GET("/affiliates/invites", controller.GetAffiliateInviteRecords)
+				adminRoute.POST("/affiliates/invites", controller.CreateAffiliateInviteRelation)
+				adminRoute.GET("/affiliates/rebates", controller.GetAffiliateRebateRecords)
+				adminRoute.GET("/affiliates/transfers", controller.GetAffiliateTransferRecords)
+				adminRoute.GET("/affiliates/withdrawals", controller.GetAffiliateWithdrawalRecords)
+				adminRoute.POST("/affiliates/withdrawals/:id/approve", controller.ApproveAffiliateWithdrawal)
+				adminRoute.POST("/affiliates/withdrawals/:id/reject", controller.RejectAffiliateWithdrawal)
+				adminRoute.POST("/affiliates/withdrawals/:id/paid", controller.MarkAffiliateWithdrawalPaid)
+				adminRoute.POST("/affiliates/withdrawals/:id/fail", controller.FailAffiliateWithdrawal)
+				adminRoute.GET("/affiliates/users", controller.GetAffiliateAdminUsers)
+				adminRoute.GET("/affiliates/users/lookup", controller.LookupAffiliateUsers)
+				adminRoute.POST("/affiliates/users/batch-rate", controller.BatchSetAffiliateRate)
+				adminRoute.GET("/affiliates/users/:id/overview", controller.GetAffiliateUserOverview)
+				adminRoute.PUT("/affiliates/users/:id", controller.UpdateAffiliateUserSettings)
+				adminRoute.DELETE("/affiliates/users/:id", controller.ClearAffiliateUserSettings)
+				adminRoute.GET("/affiliates/identity-config", controller.GetAffiliateIdentityConfig)
+				adminRoute.PUT("/affiliates/identity-config", controller.UpdateAffiliateIdentityConfig)
+				adminRoute.GET("/affiliates/fingerprints", controller.GetAffiliateFingerprintRecords)
 				adminRoute.GET("/search", controller.SearchUsers)
 				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
@@ -156,6 +228,8 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.POST("/balance/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestBalancePay)
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
+			subscriptionRoute.POST("/wechat-pay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestWechatPay)
+			subscriptionRoute.POST("/alipay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestAlipay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)
 			subscriptionRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestWaffoPancakePay)
 		}

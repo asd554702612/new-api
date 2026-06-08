@@ -99,6 +99,17 @@ const renderUsername = (text, record) => {
   );
 };
 
+const renderPhoneNumber = (text) => {
+  if (!text) {
+    return '-';
+  }
+  return (
+    <Typography.Paragraph copyable={{ content: text }} ellipsis>
+      {text}
+    </Typography.Paragraph>
+  );
+};
+
 /**
  * Render user statistics
  */
@@ -326,6 +337,11 @@ export const getUsersColumns = ({
       title: t('用户名'),
       dataIndex: 'username',
       render: (text, record) => renderUsername(text, record),
+    },
+    {
+      title: t('手机号'),
+      dataIndex: 'phone_number',
+      render: renderPhoneNumber,
     },
     {
       title: t('状态'),

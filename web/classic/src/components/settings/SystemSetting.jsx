@@ -43,6 +43,7 @@ import {
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import CustomOAuthSetting from './CustomOAuthSetting';
+import UsageLeaderboardSetting from './UsageLeaderboardSetting';
 
 const SystemSetting = () => {
   const { t } = useTranslation();
@@ -101,6 +102,7 @@ const SystemSetting = () => {
     LinuxDOClientSecret: '',
     LinuxDOMinimumTrustLevel: '',
     ServerAddress: '',
+    UsageLeaderboardIgnoredUserIds: '[]',
     // SSRF防护配置
     'fetch_setting.enable_ssrf_protection': true,
     'fetch_setting.allow_private_ip': '',
@@ -734,6 +736,19 @@ const SystemSetting = () => {
                   </Button>
                 </Form.Section>
               </Card>
+
+              <UsageLeaderboardSetting
+                value={inputs.UsageLeaderboardIgnoredUserIds || '[]'}
+                saving={loading}
+                onSave={(value) =>
+                  updateOptions([
+                    {
+                      key: 'UsageLeaderboardIgnoredUserIds',
+                      value,
+                    },
+                  ])
+                }
+              />
 
               <Card>
                 <Form.Section text={t('代理设置')}>

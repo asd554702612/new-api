@@ -35,12 +35,23 @@ export interface ApiResponse<T = unknown> {
 export type TopupInfoResponse = ApiResponse<TopupInfo>
 export type RedemptionResponse = ApiResponse<number>
 export type AmountResponse = ApiResponse<string>
-export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
+export interface OfficialPaymentData {
+  trade_type?: string
+  code_url?: string
+  qr_code?: string
+  checkout_url?: string
+  jsapi_params?: Record<string, unknown>
+}
+
+export type PaymentResponse = ApiResponse<
+  Record<string, unknown> | OfficialPaymentData
+> & {
   url?: string
 }
 export type StripePaymentResponse = ApiResponse<{ pay_link: string }>
 export type AffiliateCodeResponse = ApiResponse<string>
 export type AffiliateTransferResponse = ApiResponse
+export type AffiliateRecordsResponse = ApiResponse<AffiliateHistoryResponse>
 export type CreemPaymentResponse = ApiResponse<{ checkout_url: string }>
 export type WaffoPaymentResponse = ApiResponse<
   { payment_url?: string } | string
@@ -150,8 +161,16 @@ export interface TopupInfo {
   enable_waffo_pancake_topup?: boolean
   /** Minimum topup amount for Waffo Pancake */
   waffo_pancake_min_topup?: number
+  /** Whether official WeChat Pay topup is enabled */
+  enable_wechat_pay_topup?: boolean
+  /** Whether official Alipay topup is enabled */
+  enable_alipay_topup?: boolean
   /** Whether redemption code usage is enabled */
   enable_redemption?: boolean
+  /** Whether affiliate cashback is enabled */
+  affiliate_enabled?: boolean
+  /** Cashback percentage applied to paid quota */
+  affiliate_rebate_rate?: number
   /** Whether compliance confirmation has been completed */
   payment_compliance_confirmed?: boolean
   /** Current compliance terms version */
@@ -278,6 +297,28 @@ export interface TopupRecord {
  */
 export interface BillingHistoryResponse {
   items: TopupRecord[]
+  total: number
+}
+
+export type AffiliateLedgerAction = 'accrue' | 'transfer'
+
+export interface AffiliateLedgerRecord {
+  id: number
+  user_id: number
+  related_user_id?: number
+  action: AffiliateLedgerAction
+  quota: number
+  balance_after: number
+  history_after: number
+  source_order_trade_no?: string
+  source_order_type?: string
+  payment_method?: string
+  remark?: string
+  created_at: number
+}
+
+export interface AffiliateHistoryResponse {
+  items: AffiliateLedgerRecord[]
   total: number
 }
 

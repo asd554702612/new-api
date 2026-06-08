@@ -17,110 +17,142 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useState } from 'react';
-import {
-  Button,
-  Typography,
-  Input,
-  ScrollList,
-  ScrollItem,
-} from '@douyinfe/semi-ui';
-import { API, showError, copy, showSuccess } from '../../helpers';
-import { useIsMobile } from '../../hooks/common/useIsMobile';
-import { API_ENDPOINTS } from '../../constants/common.constant';
-import { StatusContext } from '../../context/Status';
-import { useActualTheme } from '../../context/Theme';
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
-import {
-  IconGithubLogo,
-  IconPlay,
-  IconFile,
-  IconCopy,
-} from '@douyinfe/semi-icons';
-import { Link } from 'react-router-dom';
+import { API, getLogo, getSystemName, showError } from '../../helpers';
+import { StatusContext } from '../../context/Status';
+import { UserContext } from '../../context/User';
+import { useActualTheme, useSetTheme, useTheme } from '../../context/Theme';
+import { useIsMobile } from '../../hooks/common/useIsMobile';
+import { normalizeLanguage } from '../../i18n/language';
 import NoticeModal from '../../components/layout/NoticeModal';
-import {
-  Moonshot,
-  OpenAI,
-  XAI,
-  Zhipu,
-  Volcengine,
-  Cohere,
-  Claude,
-  Gemini,
-  Suno,
-  Minimax,
-  Wenxin,
-  Spark,
-  Qingyan,
-  DeepSeek,
-  Qwen,
-  Midjourney,
-  Grok,
-  AzureAI,
-  Hunyuan,
-  Xinference,
-} from '@lobehub/icons';
+import HomeHeader from './components/HomeHeader';
+import HomeHero from './components/HomeHero';
+import HomeFeatures from './components/HomeFeatures';
+import HomeProducts from './components/HomeProducts';
+import HomePricing from './components/HomePricing';
+import HomeShowcase from './components/HomeShowcase';
+import HomeCTA from './components/HomeCTA';
+import HomeFooter from './components/HomeFooter';
+import { getHomeLandingData, PROJECT_REPOSITORY_URL } from './homeLandingData';
+import './homeLanding.css';
 
-const { Text } = Typography;
+const HOME_HEADER_OFFSET = 100;
+
+const isUrlContent = (content) =>
+  content.trim().startsWith('http://') || content.trim().startsWith('https://');
+
+const readLocalUser = () => {
+  try {
+    const user = localStorage.getItem('user');
+    return user ? JSON.parse(user) : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const Home = () => {
   const { t, i18n } = useTranslation();
   const [statusState] = useContext(StatusContext);
+  const [userState] = useContext(UserContext);
   const actualTheme = useActualTheme();
+  const theme = useTheme();
+  const setTheme = useSetTheme();
   const [homePageContentLoaded, setHomePageContentLoaded] = useState(false);
   const [homePageContent, setHomePageContent] = useState('');
   const [noticeVisible, setNoticeVisible] = useState(false);
   const isMobile = useIsMobile();
-  const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
+
   const docsLink = statusState?.status?.docs_link || '';
-  const serverAddress =
-    statusState?.status?.server_address || `${window.location.origin}`;
-  const endpointItems = API_ENDPOINTS.map((e) => ({ value: e }));
-  const [endpointIndex, setEndpointIndex] = useState(0);
-  const isChinese = i18n.language.startsWith('zh');
+  const supportContactInfo = statusState?.status?.support_contact_info || '';
+  const systemName = getSystemName();
+  const siteLogo = getLogo();
+  const localUser = readLocalUser();
+  const currentUser = userState.user || localUser;
+  const isAuthenticated = Boolean(currentUser);
+  const isAdmin = Number(currentUser?.role || 0) >= 10;
+  const dashboardPath = isAdmin ? '/console' : '/console';
+  const consolePath = isAuthenticated
+    ? dashboardPath
+    : `/login?redirect=${encodeURIComponent(dashboardPath)}`;
+  const isDark = actualTheme === 'dark';
+  const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
+  const demoVersion =
+    isDemoSiteMode && statusState?.status?.version
+      ? statusState.status.version
+      : '';
 
-  const displayHomePageContent = async () => {
+  const landingData = useMemo(
+    () => getHomeLandingData({ t, docsLink, systemName }),
+    [docsLink, systemName, t],
+  );
+
+  const displayHomePageContent = useCallback(async () => {
     setHomePageContent(localStorage.getItem('home_page_content') || '');
-    const res = await API.get('/api/home_page_content');
-    const { success, message, data } = res.data;
-    if (success) {
-      let content = data;
-      if (!data.startsWith('https://')) {
-        content = marked.parse(data);
-      }
-      setHomePageContent(content);
-      localStorage.setItem('home_page_content', content);
 
-      // 如果内容是 URL，则发送主题模式
-      if (data.startsWith('https://')) {
-        const iframe = document.querySelector('iframe');
-        if (iframe) {
-          iframe.onload = () => {
-            iframe.contentWindow.postMessage({ themeMode: actualTheme }, '*');
-            iframe.contentWindow.postMessage({ lang: i18n.language }, '*');
-          };
-        }
-      }
-    } else {
-      showError(message);
-      setHomePageContent('加载首页内容失败...');
-    }
-    setHomePageContentLoaded(true);
-  };
+    try {
+      const res = await API.get('/api/home_page_content');
+      const { success, message, data } = res.data;
 
-  const handleCopyBaseURL = async () => {
-    const ok = await copy(serverAddress);
-    if (ok) {
-      showSuccess(t('已复制到剪切板'));
+      if (success) {
+        const rawContent = String(data || '');
+        const content = isUrlContent(rawContent)
+          ? rawContent
+          : marked.parse(rawContent);
+
+        setHomePageContent(content);
+        localStorage.setItem('home_page_content', content);
+      } else {
+        showError(message);
+        setHomePageContent(t('加载首页内容失败...'));
+      }
+    } catch (error) {
+      showError(error.message || t('加载首页内容失败...'));
+      setHomePageContent(t('加载首页内容失败...'));
+    } finally {
+      setHomePageContentLoaded(true);
     }
-  };
+  }, [t]);
+
+  const handleIframeLoad = useCallback(
+    (event) => {
+      event.currentTarget.contentWindow?.postMessage(
+        { themeMode: actualTheme },
+        '*',
+      );
+      event.currentTarget.contentWindow?.postMessage(
+        { lang: i18n.language },
+        '*',
+      );
+    },
+    [actualTheme, i18n.language],
+  );
+
+  const handleLanguageChange = useCallback(
+    (language) => {
+      const normalizedLanguage = normalizeLanguage(language);
+      i18n.changeLanguage(normalizedLanguage);
+      localStorage.setItem('i18nextLng', normalizedLanguage);
+    },
+    [i18n],
+  );
+
+  const handleToggleTheme = useCallback(() => {
+    setTheme(isDark ? 'light' : 'dark');
+  }, [isDark, setTheme]);
 
   useEffect(() => {
     const checkNoticeAndShow = async () => {
       const lastCloseDate = localStorage.getItem('notice_close_date');
       const today = new Date().toDateString();
+
       if (lastCloseDate !== today) {
         try {
           const res = await API.get('/api/notice');
@@ -138,15 +170,96 @@ const Home = () => {
   }, []);
 
   useEffect(() => {
-    displayHomePageContent().then();
-  }, []);
+    displayHomePageContent();
+  }, [displayHomePageContent]);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setEndpointIndex((prev) => (prev + 1) % endpointItems.length);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [endpointItems.length]);
+  const renderDefaultLanding = () => (
+    <div className='classic-home-landing-shell relative min-h-screen overflow-hidden bg-[#f6f9ff] text-slate-950 transition-colors duration-300 dark:bg-[#040816] dark:text-white'>
+      <div className='pointer-events-none absolute inset-0 overflow-hidden'>
+        <div className='classic-home-landing-grid absolute inset-0 opacity-60 dark:opacity-20' />
+        <div className='absolute -left-20 top-20 h-[28rem] w-[28rem] rounded-full bg-blue-400/20 blur-[70px]' />
+        <div className='absolute -right-10 top-40 h-[24rem] w-[24rem] rounded-full bg-cyan-300/20 blur-[70px]' />
+        <div className='classic-home-landing-ribbon absolute inset-x-0 top-0 h-[36rem]' />
+      </div>
+
+      <HomeHeader
+        brand={systemName}
+        consoleLabel={landingData.hero.primaryAuthed}
+        consolePath={consolePath}
+        currentLanguage={i18n.language}
+        demoVersion={demoVersion}
+        isDark={isDark}
+        navItems={landingData.navItems}
+        onLanguageChange={handleLanguageChange}
+        onToggleTheme={handleToggleTheme}
+        projectUrl={PROJECT_REPOSITORY_URL}
+        siteLogo={siteLogo}
+        t={t}
+        theme={theme}
+        themeTitle={isDark ? t('切换到浅色模式') : t('切换到深色模式')}
+      />
+
+      <main className='relative z-10 px-4 pb-16 pt-[100px] sm:px-6'>
+        <HomeHero
+          consolePath={consolePath}
+          data={landingData.hero}
+          docUrl={landingData.docUrl}
+          headerOffset={HOME_HEADER_OFFSET}
+          primaryLabel={
+            isAuthenticated
+              ? landingData.hero.primaryAuthed
+              : landingData.hero.primaryGuest
+          }
+        />
+        <HomeFeatures data={landingData.features} />
+        <HomeProducts data={landingData.products} />
+        <HomePricing data={landingData.pricing} />
+        <HomeShowcase data={landingData.showcase} />
+        <HomeCTA
+          consolePath={consolePath}
+          data={landingData.cta}
+          docUrl={landingData.docUrl}
+          primaryLabel={
+            isAuthenticated
+              ? landingData.hero.primaryAuthed
+              : landingData.hero.primaryGuest
+          }
+          secondaryLabel={landingData.hero.secondary}
+        />
+      </main>
+
+      <HomeFooter
+        brand={systemName}
+        data={landingData.footer}
+        docsLabel={landingData.hero.secondary}
+        docUrl={landingData.docUrl}
+        siteLogo={siteLogo}
+        supportContactInfo={supportContactInfo}
+        supportContactLabel={t('客服联系方式')}
+      />
+    </div>
+  );
+
+  const renderCustomContent = () => {
+    if (isUrlContent(homePageContent)) {
+      return (
+        <iframe
+          src={homePageContent.trim()}
+          className='h-screen w-full border-none'
+          onLoad={handleIframeLoad}
+          allowFullScreen
+          title={t('首页内容')}
+        />
+      );
+    }
+
+    return (
+      <div
+        className='mt-[60px]'
+        dangerouslySetInnerHTML={{ __html: homePageContent }}
+      />
+    );
+  };
 
   return (
     <div className='classic-page-fill classic-home-page w-full overflow-x-hidden'>
@@ -155,198 +268,11 @@ const Home = () => {
         onClose={() => setNoticeVisible(false)}
         isMobile={isMobile}
       />
-      {homePageContentLoaded && homePageContent === '' ? (
-        <div className='classic-home-default w-full overflow-x-hidden'>
-          {/* Banner 部分 */}
-          <div className='classic-home-hero w-full border-b border-semi-color-border relative overflow-x-hidden'>
-            {/* 背景模糊晕染球 */}
-            <div className='blur-ball blur-ball-indigo' />
-            <div className='blur-ball blur-ball-teal' />
-            <div className='flex items-center justify-center px-4 pt-24 pb-8'>
-              {/* 居中内容区 */}
-              <div className='flex flex-col items-center justify-center text-center max-w-4xl mx-auto'>
-                <div className='flex flex-col items-center justify-center mb-6 md:mb-8'>
-                  <h1
-                    className={`text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-semi-color-text-0 leading-tight ${isChinese ? 'tracking-wide md:tracking-wider' : ''}`}
-                  >
-                    <>
-                      {t('统一的')}
-                      <br />
-                      <span className='shine-text'>{t('大模型接口网关')}</span>
-                    </>
-                  </h1>
-                  <p className='text-base md:text-lg lg:text-xl text-semi-color-text-1 mt-4 md:mt-6 max-w-xl'>
-                    {t('多模型统一接入，只需将基址替换为：')}
-                  </p>
-                  {/* BASE URL 与端点选择 */}
-                  <div className='flex flex-col md:flex-row items-center justify-center gap-4 w-full mt-4 md:mt-6 max-w-md'>
-                    <Input
-                      readonly
-                      value={serverAddress}
-                      className='flex-1 !rounded-full'
-                      size={isMobile ? 'default' : 'large'}
-                      suffix={
-                        <div className='flex items-center gap-2'>
-                          <ScrollList
-                            bodyHeight={32}
-                            style={{ border: 'unset', boxShadow: 'unset' }}
-                          >
-                            <ScrollItem
-                              mode='wheel'
-                              cycled={true}
-                              list={endpointItems}
-                              selectedIndex={endpointIndex}
-                              onSelect={({ index }) => setEndpointIndex(index)}
-                            />
-                          </ScrollList>
-                          <Button
-                            type='primary'
-                            onClick={handleCopyBaseURL}
-                            icon={<IconCopy />}
-                            className='!rounded-full'
-                          />
-                        </div>
-                      }
-                    />
-                  </div>
-                </div>
-
-                {/* 操作按钮 */}
-                <div className='flex flex-row gap-4 justify-center items-center'>
-                  <Link to='/console'>
-                    <Button
-                      theme='solid'
-                      type='primary'
-                      size={isMobile ? 'default' : 'large'}
-                      className='!rounded-3xl px-8 py-2'
-                      icon={<IconPlay />}
-                    >
-                      {t('获取密钥')}
-                    </Button>
-                  </Link>
-                  {isDemoSiteMode && statusState?.status?.version ? (
-                    <Button
-                      size={isMobile ? 'default' : 'large'}
-                      className='flex items-center !rounded-3xl px-6 py-2'
-                      icon={<IconGithubLogo />}
-                      onClick={() =>
-                        window.open(
-                          'https://github.com/QuantumNous/new-api',
-                          '_blank',
-                        )
-                      }
-                    >
-                      {statusState.status.version}
-                    </Button>
-                  ) : (
-                    docsLink && (
-                      <Button
-                        size={isMobile ? 'default' : 'large'}
-                        className='flex items-center !rounded-3xl px-6 py-2'
-                        icon={<IconFile />}
-                        onClick={() => window.open(docsLink, '_blank')}
-                      >
-                        {t('文档')}
-                      </Button>
-                    )
-                  )}
-                </div>
-
-                {/* 框架兼容性图标 */}
-                <div className='mt-12 md:mt-16 lg:mt-20 w-full'>
-                  <div className='flex items-center mb-6 md:mb-8 justify-center'>
-                    <Text
-                      type='tertiary'
-                      className='text-lg md:text-xl lg:text-2xl font-light'
-                    >
-                      {t('支持众多的大模型供应商')}
-                    </Text>
-                  </div>
-                  <div className='flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 lg:gap-8 max-w-5xl mx-auto px-4'>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Moonshot size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <OpenAI size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <XAI size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Zhipu.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Volcengine.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Cohere.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Claude.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Gemini.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Suno size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Minimax.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Wenxin.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Spark.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Qingyan.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <DeepSeek.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Qwen.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Midjourney size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Grok size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <AzureAI.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Hunyuan.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Xinference.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Typography.Text className='!text-lg sm:!text-xl md:!text-2xl lg:!text-3xl font-bold'>
-                        30+
-                      </Typography.Text>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      {!homePageContentLoaded ? null : homePageContent === '' ? (
+        renderDefaultLanding()
       ) : (
-        <div className='classic-page-fill overflow-x-hidden w-full'>
-          {homePageContent.startsWith('https://') ? (
-            <iframe
-              src={homePageContent}
-              className='w-full h-full border-none'
-            />
-          ) : (
-            <div
-              className='mt-[60px]'
-              dangerouslySetInnerHTML={{ __html: homePageContent }}
-            />
-          )}
+        <div className='classic-page-fill w-full overflow-x-hidden'>
+          {renderCustomContent()}
         </div>
       )}
     </div>

@@ -133,6 +133,7 @@ export function ProfileSecurityCard({
           open ? dialogs.open('password') : dialogs.close('password')
         }
         username={profile.username}
+        phoneNumber={profile.phone_number}
       />
 
       <AccessTokenDialog

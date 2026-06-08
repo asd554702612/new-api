@@ -4,15 +4,19 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
@@ -59,4 +63,39 @@ func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
 	require.Equal(t, "stream", info.TieredBillingSnapshot.EstimatedTier)
 	require.Equal(t, billing_setting.BillingModeTieredExpr, info.TieredBillingSnapshot.BillingMode)
 	require.Equal(t, common.QuotaPerUnit, info.TieredBillingSnapshot.QuotaPerUnit)
+}
+
+func TestHandleGroupRatioAppliesAffiliateIdentityMultiplier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.AffiliateIdentity{}))
+	previousDB := model.DB
+	previousEnabled := common.AffiliateIdentityEnabled
+	t.Cleanup(func() {
+		model.DB = previousDB
+		common.AffiliateIdentityEnabled = previousEnabled
+	})
+	model.DB = db
+	common.AffiliateIdentityEnabled = true
+	require.NoError(t, db.Create(&model.AffiliateIdentity{
+		UserId:         7001,
+		IdentityType:   model.AffiliateIdentityTypeInviter,
+		RateMultiplier: 0.6,
+		GrantedAt:      time.Now().Unix(),
+		ExpiresAt:      time.Now().Add(time.Hour).Unix(),
+		Status:         model.AffiliateIdentityStatusActive,
+	}).Error)
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		UserId:     7001,
+		UserGroup:  "default",
+		UsingGroup: "default",
+	}
+
+	groupRatioInfo := HandleGroupRatio(ctx, info)
+	require.Equal(t, 0.6, groupRatioInfo.GroupRatio)
+	require.True(t, groupRatioInfo.HasAffiliateIdentityRatio)
+	require.Equal(t, 0.6, groupRatioInfo.AffiliateIdentityRatio)
 }

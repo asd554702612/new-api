@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { SystemBehaviorSection } from '../general/system-behavior-section'
 import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
+import { SMSSettingsSection } from '../integrations/sms-settings-section'
 import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { PerformanceSection } from '../maintenance/performance-section'
@@ -76,6 +77,20 @@ const OPERATIONS_SECTIONS = [
           SMTPToken: settings.SMTPToken,
           SMTPSSLEnabled: settings.SMTPSSLEnabled,
           SMTPForceAuthLogin: settings.SMTPForceAuthLogin,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'sms',
+    titleKey: 'SMS Verification',
+    build: (settings: OperationsSettings) => (
+      <SMSSettingsSection
+        defaultValues={{
+          SMSIHuyiEnabled: settings.SMSIHuyiEnabled,
+          SMSIHuyiAPIID: settings.SMSIHuyiAPIID,
+          SMSIHuyiAPIKey: settings.SMSIHuyiAPIKey,
+          SMSIHuyiTemplateID: settings.SMSIHuyiTemplateID,
         }}
       />
     ),

@@ -27,6 +27,8 @@ const rankingsSearchSchema = z.object({
     .enum(['today', 'week', 'month', 'year', 'all'])
     .optional()
     .catch(undefined),
+  tab: z.enum(['models', 'users']).optional().catch(undefined),
+  user_period: z.enum(['today', 'yesterday']).optional().catch(undefined),
 })
 
 export const Route = createFileRoute('/rankings/')({

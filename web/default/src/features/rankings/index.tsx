@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
 import {
@@ -26,11 +27,14 @@ import {
   ModelsSection,
   PulseSection,
   RankingsHero,
+  UserLeaderboardSection,
 } from './components'
 import { useRankings } from './hooks/use-rankings'
-import type { RankingPeriod } from './types'
+import type { RankingPeriod, RankingsTab, UserLeaderboardPeriod } from './types'
 
 const VALID_PERIODS: RankingPeriod[] = ['today', 'week', 'month', 'year', 'all']
+const VALID_TABS: RankingsTab[] = ['models', 'users']
+const VALID_USER_PERIODS: UserLeaderboardPeriod[] = ['today', 'yesterday']
 
 export function Rankings() {
   const { t } = useTranslation()
@@ -42,6 +46,14 @@ export function Rankings() {
   )
     ? (search.period as RankingPeriod)
     : 'week'
+  const tab: RankingsTab = VALID_TABS.includes(search.tab as RankingsTab)
+    ? (search.tab as RankingsTab)
+    : 'models'
+  const userPeriod: UserLeaderboardPeriod = VALID_USER_PERIODS.includes(
+    search.user_period as UserLeaderboardPeriod
+  )
+    ? (search.user_period as UserLeaderboardPeriod)
+    : 'today'
 
   const rankingsQuery = useRankings(period)
   const snapshot = rankingsQuery.data?.data
@@ -50,6 +62,20 @@ export function Rankings() {
     navigate({
       to: '/rankings',
       search: (prev) => ({ ...prev, period: next }),
+    })
+  }
+
+  const handleTabChange = (next: RankingsTab) => {
+    navigate({
+      to: '/rankings',
+      search: (prev) => ({ ...prev, tab: next }),
+    })
+  }
+
+  const handleUserPeriodChange = (next: UserLeaderboardPeriod) => {
+    navigate({
+      to: '/rankings',
+      search: (prev) => ({ ...prev, user_period: next }),
     })
   }
 
@@ -74,36 +100,55 @@ export function Rankings() {
         <PageTransition className='relative mx-auto w-full max-w-[1280px] space-y-8 px-3 pt-16 pb-10 sm:px-6 sm:pt-20 sm:pb-12 xl:px-8'>
           <RankingsHero period={period} onPeriodChange={handlePeriodChange} />
 
-          {rankingsQuery.isLoading ? (
-            <RankingsLoading />
-          ) : !snapshot ? (
-            <RankingsError
-              message={
-                rankingsQuery.error instanceof Error
-                  ? rankingsQuery.error.message
-                  : t('Unable to load rankings data')
-              }
-            />
-          ) : (
-            <>
-              <ModelsSection
-                history={snapshot.models_history}
-                rows={snapshot.models}
-                period={period}
-              />
+          <Tabs
+            value={tab}
+            onValueChange={(value) => handleTabChange(value as RankingsTab)}
+          >
+            <TabsList>
+              <TabsTrigger value='models'>{t('Models')}</TabsTrigger>
+              <TabsTrigger value='users'>{t('Users')}</TabsTrigger>
+            </TabsList>
 
-              <MarketShareSection
-                history={snapshot.vendor_share_history}
-                rows={snapshot.vendors}
-                period={period}
-              />
+            <TabsContent value='models' className='mt-6'>
+              {rankingsQuery.isLoading ? (
+                <RankingsLoading />
+              ) : !snapshot ? (
+                <RankingsError
+                  message={
+                    rankingsQuery.error instanceof Error
+                      ? rankingsQuery.error.message
+                      : t('Unable to load rankings data')
+                  }
+                />
+              ) : (
+                <div className='space-y-8'>
+                  <ModelsSection
+                    history={snapshot.models_history}
+                    rows={snapshot.models}
+                    period={period}
+                  />
 
-              <PulseSection
-                movers={snapshot.top_movers}
-                droppers={snapshot.top_droppers}
+                  <MarketShareSection
+                    history={snapshot.vendor_share_history}
+                    rows={snapshot.vendors}
+                    period={period}
+                  />
+
+                  <PulseSection
+                    movers={snapshot.top_movers}
+                    droppers={snapshot.top_droppers}
+                  />
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value='users' className='mt-6'>
+              <UserLeaderboardSection
+                period={userPeriod}
+                onPeriodChange={handleUserPeriodChange}
               />
-            </>
-          )}
+            </TabsContent>
+          </Tabs>
         </PageTransition>
       </div>
     </PublicLayout>

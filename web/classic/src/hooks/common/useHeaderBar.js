@@ -28,6 +28,7 @@ import { normalizeLanguage } from '../../i18n/language';
 import { useIsMobile } from './useIsMobile';
 import { useSidebarCollapsed } from './useSidebarCollapsed';
 import { useMinimumLoadingTime } from './useMinimumLoadingTime';
+import { normalizeRankingsModule } from '../../pages/Rankings/utils';
 
 export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const { t, i18n } = useTranslation();
@@ -37,7 +38,9 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
   const [logoLoaded, setLogoLoaded] = useState(false);
   const navigate = useNavigate();
-  const [currentLang, setCurrentLang] = useState(normalizeLanguage(i18n.language));
+  const [currentLang, setCurrentLang] = useState(
+    normalizeLanguage(i18n.language),
+  );
   const location = useLocation();
 
   const loading = statusState?.status === undefined;
@@ -68,6 +71,7 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
             requireAuth: false, // 默认不需要登录鉴权
           };
         }
+        modules.rankings = normalizeRankingsModule(modules.rankings);
 
         return modules;
       } catch (error) {
@@ -86,6 +90,10 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
         : false; // 默认不需要登录
     }
     return false; // 默认不需要登录
+  }, [headerNavModules]);
+
+  const rankingsRequireAuth = useMemo(() => {
+    return normalizeRankingsModule(headerNavModules?.rankings).requireAuth;
   }, [headerNavModules]);
 
   const isConsoleRoute = location.pathname.startsWith('/console');
@@ -238,6 +246,7 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
     drawerOpen,
     headerNavModules,
     pricingRequireAuth,
+    rankingsRequireAuth,
 
     // Actions
     logout,

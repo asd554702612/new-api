@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,8 @@ type Option struct {
 	Key   string `json:"key" gorm:"primaryKey"`
 	Value string `json:"value"`
 }
+
+const OptionKeyUsageLeaderboardIgnoredUserIds = "UsageLeaderboardIgnoredUserIds"
 
 func AllOption() ([]*Option, error) {
 	var options []*Option
@@ -39,6 +42,7 @@ func InitOptionMap() {
 	common.OptionMap["PasswordLoginEnabled"] = strconv.FormatBool(common.PasswordLoginEnabled)
 	common.OptionMap["PasswordRegisterEnabled"] = strconv.FormatBool(common.PasswordRegisterEnabled)
 	common.OptionMap["EmailVerificationEnabled"] = strconv.FormatBool(common.EmailVerificationEnabled)
+	common.OptionMap["PhoneVerificationEnabled"] = strconv.FormatBool(common.PhoneVerificationEnabled)
 	common.OptionMap["GitHubOAuthEnabled"] = strconv.FormatBool(common.GitHubOAuthEnabled)
 	common.OptionMap["LinuxDOOAuthEnabled"] = strconv.FormatBool(common.LinuxDOOAuthEnabled)
 	common.OptionMap["TelegramOAuthEnabled"] = strconv.FormatBool(common.TelegramOAuthEnabled)
@@ -64,12 +68,17 @@ func InitOptionMap() {
 	common.OptionMap["SMTPToken"] = ""
 	common.OptionMap["SMTPSSLEnabled"] = strconv.FormatBool(common.SMTPSSLEnabled)
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
+	common.OptionMap["SMSIHuyiEnabled"] = "false"
+	common.OptionMap["SMSIHuyiAPIID"] = ""
+	common.OptionMap["SMSIHuyiAPIKey"] = ""
+	common.OptionMap["SMSIHuyiTemplateID"] = "309190"
 	common.OptionMap["Notice"] = ""
 	common.OptionMap["About"] = ""
 	common.OptionMap["HomePageContent"] = ""
 	common.OptionMap["Footer"] = common.Footer
 	common.OptionMap["SystemName"] = common.SystemName
 	common.OptionMap["Logo"] = common.Logo
+	common.OptionMap["SupportContactInfo"] = common.SupportContactInfo
 	common.OptionMap["ServerAddress"] = ""
 	common.OptionMap["WorkerUrl"] = system_setting.WorkerUrl
 	common.OptionMap["WorkerValidKey"] = system_setting.WorkerValidKey
@@ -114,6 +123,31 @@ func InitOptionMap() {
 	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
 	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
 	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
+	common.OptionMap["WechatPayEnabled"] = strconv.FormatBool(setting.WechatPayEnabled)
+	common.OptionMap["WechatPayUnitPrice"] = strconv.FormatFloat(setting.WechatPayUnitPrice, 'f', -1, 64)
+	common.OptionMap["WechatPayAppID"] = setting.WechatPayAppID
+	common.OptionMap["WechatPayMchID"] = setting.WechatPayMchID
+	common.OptionMap["WechatPayAPIv3Key"] = setting.WechatPayAPIv3Key
+	common.OptionMap["WechatPayPrivateKey"] = setting.WechatPayPrivateKey
+	common.OptionMap["WechatPayMerchantSerialNo"] = setting.WechatPayMerchantSerialNo
+	common.OptionMap["WechatPayPublicKeyID"] = setting.WechatPayPublicKeyID
+	common.OptionMap["WechatPayPublicKey"] = setting.WechatPayPublicKey
+	common.OptionMap["WechatPayNotifyURL"] = setting.WechatPayNotifyURL
+	common.OptionMap["WechatPayReturnURL"] = setting.WechatPayReturnURL
+	common.OptionMap["WechatPayJSAPIEnabled"] = strconv.FormatBool(setting.WechatPayJSAPIEnabled)
+	common.OptionMap["WechatPayH5Enabled"] = strconv.FormatBool(setting.WechatPayH5Enabled)
+	common.OptionMap["WechatPayNativeEnabled"] = strconv.FormatBool(setting.WechatPayNativeEnabled)
+	common.OptionMap["AlipayEnabled"] = strconv.FormatBool(setting.AlipayEnabled)
+	common.OptionMap["AlipayUnitPrice"] = strconv.FormatFloat(setting.AlipayUnitPrice, 'f', -1, 64)
+	common.OptionMap["AlipayAppID"] = setting.AlipayAppID
+	common.OptionMap["AlipayPrivateKey"] = setting.AlipayPrivateKey
+	common.OptionMap["AlipayPublicKey"] = setting.AlipayPublicKey
+	common.OptionMap["AlipaySandbox"] = strconv.FormatBool(setting.AlipaySandbox)
+	common.OptionMap["AlipayNotifyURL"] = setting.AlipayNotifyURL
+	common.OptionMap["AlipayReturnURL"] = setting.AlipayReturnURL
+	common.OptionMap["AlipayPageEnabled"] = strconv.FormatBool(setting.AlipayPageEnabled)
+	common.OptionMap["AlipayWapEnabled"] = strconv.FormatBool(setting.AlipayWapEnabled)
+	common.OptionMap["AlipayFaceEnabled"] = strconv.FormatBool(setting.AlipayFaceEnabled)
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -131,6 +165,16 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
+	common.OptionMap["AffiliateEnabled"] = strconv.FormatBool(common.AffiliateEnabled)
+	common.OptionMap["AffiliateRebateRate"] = strconv.FormatFloat(common.AffiliateRebateRate, 'f', -1, 64)
+	common.OptionMap["AffiliateSignupRewardEnabled"] = strconv.FormatBool(common.AffiliateSignupRewardEnabled)
+	common.OptionMap["AffiliateSignupRewardQuota"] = strconv.Itoa(common.AffiliateSignupRewardQuota)
+	common.OptionMap["AffiliateIdentityEnabled"] = strconv.FormatBool(common.AffiliateIdentityEnabled)
+	common.OptionMap["AffiliateIdentityConfig"] = common.AffiliateIdentityConfig
+	common.OptionMap["AffiliateWithdrawEnabled"] = strconv.FormatBool(common.AffiliateWithdrawEnabled)
+	common.OptionMap["AffiliateWithdrawMinQuota"] = strconv.Itoa(common.AffiliateWithdrawMinQuota)
+	common.OptionMap["AffiliateWithdrawDailyLimit"] = strconv.Itoa(common.AffiliateWithdrawDailyLimit)
+	common.OptionMap["AffiliateWithdrawHelpText"] = common.AffiliateWithdrawHelpText
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -173,6 +217,7 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
+	common.OptionMap[OptionKeyUsageLeaderboardIgnoredUserIds] = "[]"
 
 	// 自动添加所有注册的模型配置
 	modelConfigs := config.GlobalConfig.ExportAllConfigs()
@@ -203,6 +248,9 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
+	if err := validateOptionValue(key, value); err != nil {
+		return err
+	}
 	// Save to database first
 	option := Option{
 		Key: key,
@@ -226,6 +274,11 @@ func UpdateOption(key string, value string) error {
 func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
+	}
+	for k, v := range values {
+		if err := validateOptionValue(k, v); err != nil {
+			return err
+		}
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for k, v := range values {
@@ -254,6 +307,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
+	if err := validateOptionValue(key, value); err != nil {
+		return err
+	}
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理
@@ -284,6 +340,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.PasswordLoginEnabled = boolValue
 		case "EmailVerificationEnabled":
 			common.EmailVerificationEnabled = boolValue
+		case "PhoneVerificationEnabled":
+			common.PhoneVerificationEnabled = boolValue
 		case "GitHubOAuthEnabled":
 			common.GitHubOAuthEnabled = boolValue
 		case "LinuxDOOAuthEnabled":
@@ -296,6 +354,14 @@ func updateOptionMap(key string, value string) (err error) {
 			common.TurnstileCheckEnabled = boolValue
 		case "RegisterEnabled":
 			common.RegisterEnabled = boolValue
+		case "AffiliateEnabled":
+			common.AffiliateEnabled = boolValue
+		case "AffiliateSignupRewardEnabled":
+			common.AffiliateSignupRewardEnabled = boolValue
+		case "AffiliateIdentityEnabled":
+			common.AffiliateIdentityEnabled = boolValue
+		case "AffiliateWithdrawEnabled":
+			common.AffiliateWithdrawEnabled = boolValue
 		case "EmailDomainRestrictionEnabled":
 			common.EmailDomainRestrictionEnabled = boolValue
 		case "EmailAliasRestrictionEnabled":
@@ -358,6 +424,24 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.DefaultUseAutoGroup = boolValue
 		case "ExposeRatioEnabled":
 			ratio_setting.SetExposeRatioEnabled(boolValue)
+		case "WechatPayEnabled":
+			setting.WechatPayEnabled = boolValue
+		case "WechatPayJSAPIEnabled":
+			setting.WechatPayJSAPIEnabled = boolValue
+		case "WechatPayH5Enabled":
+			setting.WechatPayH5Enabled = boolValue
+		case "WechatPayNativeEnabled":
+			setting.WechatPayNativeEnabled = boolValue
+		case "AlipayEnabled":
+			setting.AlipayEnabled = boolValue
+		case "AlipaySandbox":
+			setting.AlipaySandbox = boolValue
+		case "AlipayPageEnabled":
+			setting.AlipayPageEnabled = boolValue
+		case "AlipayWapEnabled":
+			setting.AlipayWapEnabled = boolValue
+		case "AlipayFaceEnabled":
+			setting.AlipayFaceEnabled = boolValue
 		}
 	}
 	switch key {
@@ -462,6 +546,38 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
 		setting.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
+	case "WechatPayUnitPrice":
+		setting.WechatPayUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "WechatPayAppID":
+		setting.WechatPayAppID = value
+	case "WechatPayMchID":
+		setting.WechatPayMchID = value
+	case "WechatPayAPIv3Key":
+		setting.WechatPayAPIv3Key = value
+	case "WechatPayPrivateKey":
+		setting.WechatPayPrivateKey = value
+	case "WechatPayMerchantSerialNo":
+		setting.WechatPayMerchantSerialNo = value
+	case "WechatPayPublicKeyID":
+		setting.WechatPayPublicKeyID = value
+	case "WechatPayPublicKey":
+		setting.WechatPayPublicKey = value
+	case "WechatPayNotifyURL":
+		setting.WechatPayNotifyURL = value
+	case "WechatPayReturnURL":
+		setting.WechatPayReturnURL = value
+	case "AlipayUnitPrice":
+		setting.AlipayUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "AlipayAppID":
+		setting.AlipayAppID = value
+	case "AlipayPrivateKey":
+		setting.AlipayPrivateKey = value
+	case "AlipayPublicKey":
+		setting.AlipayPublicKey = value
+	case "AlipayNotifyURL":
+		setting.AlipayNotifyURL = value
+	case "AlipayReturnURL":
+		setting.AlipayReturnURL = value
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":
@@ -480,6 +596,8 @@ func updateOptionMap(key string, value string) (err error) {
 		common.SystemName = value
 	case "Logo":
 		common.Logo = value
+	case "SupportContactInfo":
+		common.SupportContactInfo = value
 	case "WeChatServerAddress":
 		common.WeChatServerAddress = value
 	case "WeChatServerToken":
@@ -500,6 +618,18 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaForInviter, _ = strconv.Atoi(value)
 	case "QuotaForInvitee":
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
+	case "AffiliateRebateRate":
+		common.AffiliateRebateRate, _ = strconv.ParseFloat(value, 64)
+	case "AffiliateSignupRewardQuota":
+		common.AffiliateSignupRewardQuota, _ = strconv.Atoi(value)
+	case "AffiliateIdentityConfig":
+		common.AffiliateIdentityConfig = value
+	case "AffiliateWithdrawMinQuota":
+		common.AffiliateWithdrawMinQuota, _ = strconv.Atoi(value)
+	case "AffiliateWithdrawDailyLimit":
+		common.AffiliateWithdrawDailyLimit, _ = strconv.Atoi(value)
+	case "AffiliateWithdrawHelpText":
+		common.AffiliateWithdrawHelpText = value
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":
@@ -568,6 +698,50 @@ func updateOptionMap(key string, value string) (err error) {
 		// No additional in-memory variable to update.
 	}
 	return err
+}
+
+func validateOptionValue(key string, value string) error {
+	if key != OptionKeyUsageLeaderboardIgnoredUserIds {
+		return nil
+	}
+	_, err := normalizeUsageLeaderboardIgnoredUserIds(value)
+	return err
+}
+
+func GetUsageLeaderboardIgnoredUserIds() []int {
+	common.OptionMapRWMutex.RLock()
+	raw := common.OptionMap[OptionKeyUsageLeaderboardIgnoredUserIds]
+	common.OptionMapRWMutex.RUnlock()
+
+	ids, err := normalizeUsageLeaderboardIgnoredUserIds(raw)
+	if err != nil {
+		common.SysLog("failed to parse usage leaderboard ignored users: " + err.Error())
+		return []int{}
+	}
+	return ids
+}
+
+func normalizeUsageLeaderboardIgnoredUserIds(raw string) ([]int, error) {
+	if strings.TrimSpace(raw) == "" {
+		return []int{}, nil
+	}
+	var values []int
+	if err := common.UnmarshalJsonStr(raw, &values); err != nil {
+		return nil, fmt.Errorf("invalid usage leaderboard ignored user ids: %w", err)
+	}
+	seen := make(map[int]struct{}, len(values))
+	normalized := make([]int, 0, len(values))
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	return normalized, nil
 }
 
 // handleConfigUpdate 处理分层配置更新，返回是否已处理

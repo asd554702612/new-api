@@ -36,6 +36,14 @@ export default function SettingsCreditLimit(props) {
     PreConsumedQuota: '',
     QuotaForInviter: '',
     QuotaForInvitee: '',
+    AffiliateSignupRewardEnabled: false,
+    AffiliateSignupRewardQuota: '',
+    AffiliateIdentityEnabled: false,
+    AffiliateIdentityConfig: '',
+    AffiliateWithdrawEnabled: false,
+    AffiliateWithdrawMinQuota: '',
+    AffiliateWithdrawDailyLimit: '',
+    AffiliateWithdrawHelpText: '',
     'quota_setting.enable_free_model_pre_consume': true,
   });
   const refForm = useRef();
@@ -179,6 +187,126 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       QuotaForInvitee: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.Switch
+                  label={t('启用邀请注册奖励')}
+                  field={'AffiliateSignupRewardEnabled'}
+                  extraText={
+                    !complianceConfirmed ? t('启用前需先确认合规声明') : ''
+                  }
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateSignupRewardEnabled: value,
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('邀请注册奖励额度')}
+                  field={'AffiliateSignupRewardQuota'}
+                  step={1}
+                  min={0}
+                  suffix={'Token'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateSignupRewardQuota: String(value),
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+            <Row>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.Switch
+                  label={t('启用邀请身份倍率')}
+                  field={'AffiliateIdentityEnabled'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateIdentityEnabled: value,
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24}>
+                <Form.TextArea
+                  label={t('邀请身份倍率配置')}
+                  field={'AffiliateIdentityConfig'}
+                  autosize
+                  placeholder='{"inviter_rate_multiplier":1.5,"invitee_rate_multiplier":1.4,"duration_hours":720}'
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateIdentityConfig: value,
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+            <Row>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.Switch
+                  label={t('启用邀请返利提现')}
+                  field={'AffiliateWithdrawEnabled'}
+                  extraText={
+                    !complianceConfirmed ? t('启用前需先确认合规声明') : ''
+                  }
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateWithdrawEnabled: value,
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('邀请返利最低提现额度')}
+                  field={'AffiliateWithdrawMinQuota'}
+                  step={1}
+                  min={0}
+                  suffix={'Token'}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateWithdrawMinQuota: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('每日提现申请次数')}
+                  field={'AffiliateWithdrawDailyLimit'}
+                  step={1}
+                  min={0}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateWithdrawDailyLimit: String(value),
+                    })
+                  }
+                />
+              </Col>
+            </Row>
+            <Row>
+              <Col xs={24}>
+                <Form.TextArea
+                  label={t('邀请返利提现说明')}
+                  field={'AffiliateWithdrawHelpText'}
+                  autosize
+                  placeholder={t('例如：请填写微信收款账号或联系方式')}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffiliateWithdrawHelpText: value,
                     })
                   }
                 />

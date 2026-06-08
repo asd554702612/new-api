@@ -21,7 +21,7 @@ import type { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link } from '@tanstack/react-router'
-import { Loader2, LogIn, KeyRound } from 'lucide-react'
+import { Loader2, LogIn, KeyRound, Send, Smartphone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
@@ -52,7 +52,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PasswordInput } from '@/components/password-input'
 import { Turnstile } from '@/components/turnstile'
-import { login, wechatLoginByCode } from '@/features/auth/api'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  login,
+  sendPhoneVerification,
+  wechatLoginByCode,
+} from '@/features/auth/api'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { loginFormSchema } from '@/features/auth/constants'
@@ -74,6 +79,11 @@ export function UserAuthForm({
   const [isPasskeyLoading, setIsPasskeyLoading] = useState(false)
   const [isWeChatDialogOpen, setIsWeChatDialogOpen] = useState(false)
   const [isWeChatSubmitting, setIsWeChatSubmitting] = useState(false)
+  const [loginMode, setLoginMode] = useState<'password' | 'sms'>('password')
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [smsCode, setSMSCode] = useState('')
+  const [isSendingSMSCode, setIsSendingSMSCode] = useState(false)
+  const [smsCountdown, setSMSCountdown] = useState(0)
   const legalConsentErrorMessage = t('Please agree to the legal terms first')
   const loginFailedMessage = t('Login failed')
 
@@ -85,6 +95,10 @@ export function UserAuthForm({
     (status?.password_login_enabled ??
       status?.data?.password_login_enabled ??
       true) !== false
+  const phoneVerificationEnabled = Boolean(
+    status?.phone_verification_enabled ??
+      status?.data?.phone_verification_enabled
+  )
   const {
     isTurnstileEnabled,
     turnstileSiteKey,
@@ -126,6 +140,24 @@ export function UserAuthForm({
       .then(setPasskeySupported)
       .catch(() => setPasskeySupported(false))
   }, [])
+
+  useEffect(() => {
+    if (!passwordLoginEnabled && phoneVerificationEnabled) {
+      setLoginMode('sms')
+      return
+    }
+    if (!phoneVerificationEnabled && loginMode === 'sms') {
+      setLoginMode('password')
+    }
+  }, [loginMode, passwordLoginEnabled, phoneVerificationEnabled])
+
+  useEffect(() => {
+    if (smsCountdown <= 0) return
+    const timer = window.setInterval(() => {
+      setSMSCountdown((seconds) => Math.max(seconds - 1, 0))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [smsCountdown])
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -176,6 +208,79 @@ export function UserAuthForm({
       }
     } catch (_error) {
       // Errors are handled by global interceptor
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  async function handleSendSMSCode() {
+    if (requiresLegalConsent && !agreedToLegal) {
+      toast.error(legalConsentErrorMessage)
+      return
+    }
+    if (!phoneNumber.trim()) {
+      toast.error(t('Please enter your phone number'))
+      return
+    }
+    if (!validateTurnstile()) return
+
+    setIsSendingSMSCode(true)
+    try {
+      const res = await sendPhoneVerification(
+        phoneNumber.trim(),
+        'sms_login',
+        turnstileToken
+      )
+      if (res?.success) {
+        toast.success(t('Verification code sent'))
+        setSMSCountdown(60)
+      } else {
+        toast.error(res?.message || t('Failed to send verification code'))
+      }
+    } catch (_error) {
+      toast.error(t('Failed to send verification code'))
+    } finally {
+      setIsSendingSMSCode(false)
+    }
+  }
+
+  async function handleSMSLogin() {
+    if (requiresLegalConsent && !agreedToLegal) {
+      toast.error(legalConsentErrorMessage)
+      return
+    }
+    if (!phoneNumber.trim()) {
+      toast.error(t('Please enter your phone number'))
+      return
+    }
+    if (!smsCode.trim()) {
+      toast.error(t('Please enter the verification code'))
+      return
+    }
+    if (!validateTurnstile()) return
+
+    setIsLoading(true)
+    try {
+      const res = await login({
+        login_type: 'sms',
+        phone_number: phoneNumber.trim(),
+        sms_code: smsCode.trim(),
+        turnstile: turnstileToken,
+      })
+
+      if (res.success) {
+        if (res.data?.require_2fa) {
+          redirectTo2FA()
+          return
+        }
+
+        await handleLoginSuccess(res.data as { id?: number } | null, redirectTo)
+        toast.success(t('Welcome back!'))
+      } else {
+        toast.error(res.message || loginFailedMessage)
+      }
+    } catch (_error) {
+      toast.error(loginFailedMessage)
     } finally {
       setIsLoading(false)
     }
@@ -334,70 +439,158 @@ export function UserAuthForm({
       >
         {hasAlternativeLogin && alternativeLoginMethods}
 
-        {passwordLoginEnabled && (
-          <>
-            {/* Username Field */}
-            <FormField
-              control={form.control}
-              name='username'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Username or Email')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder={t('Enter your username or email')}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Password Field */}
-            <FormField
-              control={form.control}
-              name='password'
-              render={({ field }) => (
-                <FormItem className='relative'>
-                  <FormLabel>{t('Password')}</FormLabel>
-                  <FormControl>
-                    <PasswordInput
-                      placeholder={t('Enter password')}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                  <Link
-                    to='/forgot-password'
-                    className='text-muted-foreground absolute end-0 -top-0.5 z-10 text-sm font-medium hover:opacity-75'
-                  >
-                    {t('Forgot password?')}
-                  </Link>
-                </FormItem>
-              )}
-            />
-
-            {/* Submit Button */}
-            <Button
-              type='submit'
-              className='mt-2 w-full justify-center gap-2'
-              disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
-            >
-              {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
-              {t('Sign in')}
-            </Button>
-
-            {/* Turnstile */}
-            {isTurnstileEnabled && (
-              <div className='mt-2'>
-                <Turnstile
-                  siteKey={turnstileSiteKey}
-                  onVerify={setTurnstileToken}
-                />
-              </div>
+        {(passwordLoginEnabled || phoneVerificationEnabled) && (
+          <Tabs
+            value={loginMode}
+            onValueChange={(value) => setLoginMode(value as 'password' | 'sms')}
+            className='space-y-4'
+          >
+            {passwordLoginEnabled && phoneVerificationEnabled && (
+              <TabsList className='grid w-full grid-cols-2'>
+                <TabsTrigger value='password' className='gap-1.5'>
+                  <KeyRound className='h-4 w-4' />
+                  {t('Password login')}
+                </TabsTrigger>
+                <TabsTrigger value='sms' className='gap-1.5'>
+                  <Smartphone className='h-4 w-4' />
+                  {t('SMS login')}
+                </TabsTrigger>
+              </TabsList>
             )}
-          </>
+
+            {passwordLoginEnabled && (
+              <TabsContent value='password' className='mt-0 space-y-4'>
+                <FormField
+                  control={form.control}
+                  name='username'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Username / Email / Phone')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder={t('Enter username, email, or phone')}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name='password'
+                  render={({ field }) => (
+                    <FormItem className='relative'>
+                      <FormLabel>{t('Password')}</FormLabel>
+                      <FormControl>
+                        <PasswordInput
+                          placeholder={t('Enter password')}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      <Link
+                        to='/forgot-password'
+                        className='text-muted-foreground absolute end-0 -top-0.5 z-10 text-sm font-medium hover:opacity-75'
+                      >
+                        {t('Forgot password?')}
+                      </Link>
+                    </FormItem>
+                  )}
+                />
+
+                <Button
+                  type='submit'
+                  className='mt-2 w-full justify-center gap-2'
+                  disabled={
+                    isLoading || (requiresLegalConsent && !agreedToLegal)
+                  }
+                >
+                  {isLoading ? (
+                    <Loader2 className='animate-spin' />
+                  ) : (
+                    <LogIn />
+                  )}
+                  {t('Sign in')}
+                </Button>
+              </TabsContent>
+            )}
+
+            {phoneVerificationEnabled && (
+              <TabsContent value='sms' className='mt-0 space-y-4'>
+                <div className='space-y-2'>
+                  <Label htmlFor='sms-phone-number'>
+                    {t('Phone number')}
+                  </Label>
+                  <Input
+                    id='sms-phone-number'
+                    value={phoneNumber}
+                    onChange={(event) => setPhoneNumber(event.target.value)}
+                    placeholder={t('Enter your phone number')}
+                    autoComplete='tel'
+                  />
+                </div>
+
+                <div className='space-y-2'>
+                  <Label htmlFor='sms-code'>{t('Verification code')}</Label>
+                  <div className='flex gap-2'>
+                    <Input
+                      id='sms-code'
+                      value={smsCode}
+                      onChange={(event) => setSMSCode(event.target.value)}
+                      placeholder={t('Enter the verification code')}
+                      autoComplete='one-time-code'
+                    />
+                    <Button
+                      type='button'
+                      variant='outline'
+                      className='shrink-0 gap-1.5'
+                      onClick={handleSendSMSCode}
+                      disabled={
+                        isSendingSMSCode ||
+                        smsCountdown > 0 ||
+                        !phoneNumber.trim() ||
+                        (requiresLegalConsent && !agreedToLegal)
+                      }
+                    >
+                      {isSendingSMSCode ? (
+                        <Loader2 className='h-4 w-4 animate-spin' />
+                      ) : (
+                        <Send className='h-4 w-4' />
+                      )}
+                      {smsCountdown > 0
+                        ? t('Resend ({{seconds}}s)', {
+                            seconds: smsCountdown,
+                          })
+                        : t('Send code')}
+                    </Button>
+                  </div>
+                </div>
+
+                <Button
+                  type='button'
+                  className='mt-2 w-full justify-center gap-2'
+                  onClick={handleSMSLogin}
+                  disabled={
+                    isLoading || (requiresLegalConsent && !agreedToLegal)
+                  }
+                >
+                  {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
+                  {t('Sign in')}
+                </Button>
+              </TabsContent>
+            )}
+          </Tabs>
+        )}
+
+        {isTurnstileEnabled && (
+          <div className='mt-2'>
+            <Turnstile
+              siteKey={turnstileSiteKey}
+              onVerify={setTurnstileToken}
+            />
+          </div>
         )}
 
         <LegalConsent

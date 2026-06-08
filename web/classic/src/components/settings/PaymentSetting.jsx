@@ -24,6 +24,8 @@ import SettingsPaymentGateway from '../../pages/Setting/Payment/SettingsPaymentG
 import SettingsPaymentGatewayStripe from '../../pages/Setting/Payment/SettingsPaymentGatewayStripe';
 import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPaymentGatewayCreem';
 import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
+import SettingsPaymentGatewayWechatPay from '../../pages/Setting/Payment/SettingsPaymentGatewayWechatPay';
+import SettingsPaymentGatewayAlipay from '../../pages/Setting/Payment/SettingsPaymentGatewayAlipay';
 import { API, showError, showSuccess, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
 import RiskAcknowledgementModal from '../common/modals/RiskAcknowledgementModal';
@@ -51,6 +53,31 @@ const PaymentSetting = () => {
     StripeUnitPrice: 8.0,
     StripeMinTopUp: 1,
     StripePromotionCodesEnabled: false,
+
+    WechatPayEnabled: false,
+    WechatPayUnitPrice: 0,
+    WechatPayAppID: '',
+    WechatPayMchID: '',
+    WechatPayAPIv3Key: '',
+    WechatPayPrivateKey: '',
+    WechatPayMerchantSerialNo: '',
+    WechatPayNotifyURL: '',
+    WechatPayReturnURL: '',
+    WechatPayJSAPIEnabled: false,
+    WechatPayH5Enabled: true,
+    WechatPayNativeEnabled: true,
+
+    AlipayEnabled: false,
+    AlipayUnitPrice: 0,
+    AlipayAppID: '',
+    AlipayPrivateKey: '',
+    AlipayPublicKey: '',
+    AlipaySandbox: false,
+    AlipayNotifyURL: '',
+    AlipayReturnURL: '',
+    AlipayPageEnabled: true,
+    AlipayWapEnabled: true,
+    AlipayFaceEnabled: true,
 
     'payment_setting.compliance_confirmed': false,
     'payment_setting.compliance_terms_version': '',
@@ -159,6 +186,8 @@ const PaymentSetting = () => {
           case 'Price':
           case 'MinTopUp':
           case 'StripeUnitPrice':
+          case 'WechatPayUnitPrice':
+          case 'AlipayUnitPrice':
           case 'StripeMinTopUp':
             newInputs[item.key] = parseFloat(item.value);
             break;
@@ -298,6 +327,20 @@ const PaymentSetting = () => {
               </Tabs.TabPane>
               <Tabs.TabPane tab={t('Waffo 设置')} itemKey='waffo'>
                 <SettingsPaymentGatewayWaffo
+                  options={inputs}
+                  refresh={onRefresh}
+                  hideSectionTitle
+                />
+              </Tabs.TabPane>
+              <Tabs.TabPane tab={t('微信支付')} itemKey='wechat-pay'>
+                <SettingsPaymentGatewayWechatPay
+                  options={inputs}
+                  refresh={onRefresh}
+                  hideSectionTitle
+                />
+              </Tabs.TabPane>
+              <Tabs.TabPane tab={t('支付宝')} itemKey='alipay-direct'>
+                <SettingsPaymentGatewayAlipay
                   options={inputs}
                   refresh={onRefresh}
                   hideSectionTitle

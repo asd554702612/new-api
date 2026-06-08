@@ -30,6 +30,10 @@ import {
 import { API, showError, showSuccess } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../../context/Status';
+import {
+  buildHeaderNavModulesWithRankings,
+  normalizeRankingsModule,
+} from '../../Rankings/utils';
 
 const { Text } = Typography;
 
@@ -46,6 +50,10 @@ export default function SettingsHeaderNavModules(props) {
       enabled: true,
       requireAuth: false, // 默认不需要登录鉴权
     },
+    rankings: {
+      enabled: true,
+      requireAuth: true,
+    },
     docs: true,
     about: true,
   });
@@ -54,8 +62,8 @@ export default function SettingsHeaderNavModules(props) {
   function handleHeaderNavModuleChange(moduleKey) {
     return (checked) => {
       const newModules = { ...headerNavModules };
-      if (moduleKey === 'pricing') {
-        // 对于pricing模块，只更新enabled属性
+      if (moduleKey === 'pricing' || moduleKey === 'rankings') {
+        // 对于带权限子配置的模块，只更新enabled属性
         newModules[moduleKey] = {
           ...newModules[moduleKey],
           enabled: checked,
@@ -77,6 +85,15 @@ export default function SettingsHeaderNavModules(props) {
     setHeaderNavModules(newModules);
   }
 
+  function handleRankingsAuthChange(checked) {
+    const newModules = { ...headerNavModules };
+    newModules.rankings = {
+      ...normalizeRankingsModule(newModules.rankings),
+      requireAuth: checked,
+    };
+    setHeaderNavModules(newModules);
+  }
+
   // 重置顶栏模块为默认配置
   function resetHeaderNavModules() {
     const defaultModules = {
@@ -85,6 +102,10 @@ export default function SettingsHeaderNavModules(props) {
       pricing: {
         enabled: true,
         requireAuth: false,
+      },
+      rankings: {
+        enabled: true,
+        requireAuth: true,
       },
       docs: true,
       about: true,
@@ -141,8 +162,9 @@ export default function SettingsHeaderNavModules(props) {
             requireAuth: false, // 默认不需要登录鉴权
           };
         }
+        modules.rankings = normalizeRankingsModule(modules.rankings);
 
-        setHeaderNavModules(modules);
+        setHeaderNavModules(buildHeaderNavModulesWithRankings(modules));
       } catch (error) {
         // 使用默认配置
         const defaultModules = {
@@ -151,6 +173,10 @@ export default function SettingsHeaderNavModules(props) {
           pricing: {
             enabled: true,
             requireAuth: false,
+          },
+          rankings: {
+            enabled: true,
+            requireAuth: true,
           },
           docs: true,
           about: true,
@@ -177,6 +203,12 @@ export default function SettingsHeaderNavModules(props) {
       title: t('模型广场'),
       description: t('模型定价，需要登录访问'),
       hasSubConfig: true, // 标识该模块有子配置
+    },
+    {
+      key: 'rankings',
+      title: t('排行榜'),
+      description: t('模型与用户消耗排行榜'),
+      hasSubConfig: true,
     },
     {
       key: 'docs',
@@ -247,7 +279,11 @@ export default function SettingsHeaderNavModules(props) {
                       checked={
                         module.key === 'pricing'
                           ? headerNavModules[module.key]?.enabled
-                          : headerNavModules[module.key]
+                          : module.key === 'rankings'
+                            ? normalizeRankingsModule(
+                                headerNavModules[module.key],
+                              ).enabled
+                            : headerNavModules[module.key]
                       }
                       onChange={handleHeaderNavModuleChange(module.key)}
                       size='default'
@@ -255,11 +291,12 @@ export default function SettingsHeaderNavModules(props) {
                   </div>
                 </div>
 
-                {/* 为模型广场添加权限控制子开关 */}
-                {module.key === 'pricing' &&
+                {/* 为模型广场和排行榜添加权限控制子开关 */}
+                {(module.key === 'pricing' || module.key === 'rankings') &&
                   (module.key === 'pricing'
                     ? headerNavModules[module.key]?.enabled
-                    : headerNavModules[module.key]) && (
+                    : normalizeRankingsModule(headerNavModules[module.key])
+                        .enabled) && (
                     <div
                       style={{
                         borderTop: '1px solid var(--semi-color-border)',
@@ -295,15 +332,25 @@ export default function SettingsHeaderNavModules(props) {
                               display: 'block',
                             }}
                           >
-                            {t('开启后未登录用户无法访问模型广场')}
+                            {module.key === 'pricing'
+                              ? t('开启后未登录用户无法访问模型广场')
+                              : t('开启后未登录用户无法访问排行榜')}
                           </Text>
                         </div>
                         <div style={{ marginLeft: '16px' }}>
                           <Switch
                             checked={
-                              headerNavModules.pricing?.requireAuth || false
+                              module.key === 'pricing'
+                                ? headerNavModules.pricing?.requireAuth || false
+                                : normalizeRankingsModule(
+                                    headerNavModules.rankings,
+                                  ).requireAuth
                             }
-                            onChange={handlePricingAuthChange}
+                            onChange={
+                              module.key === 'pricing'
+                                ? handlePricingAuthChange
+                                : handleRankingsAuthChange
+                            }
                             size='default'
                           />
                         </div>

@@ -90,6 +90,7 @@ const EditUserModal = (props) => {
     telegram_id: '',
     linux_do_id: '',
     email: '',
+    phone_number: '',
     quota: 0,
     quota_amount: 0,
     group: 'default',
@@ -319,6 +320,15 @@ const EditUserModal = (props) => {
                         field='display_name'
                         label={t('显示名称')}
                         placeholder={t('请输入新的显示名称')}
+                        showClear
+                      />
+                    </Col>
+
+                    <Col span={24}>
+                      <Form.Input
+                        field='phone_number'
+                        label={t('手机号')}
+                        placeholder={t('请输入手机号，可留空')}
                         showClear
                       />
                     </Col>

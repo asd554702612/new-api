@@ -18,7 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { lazy, Suspense, useContext, useMemo } from 'react';
-import { Route, Routes, useLocation, useParams } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import User from './pages/User';
 import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers';
@@ -40,11 +46,20 @@ import Chat from './pages/Chat';
 import Chat2Link from './pages/Chat2Link';
 import Midjourney from './pages/Midjourney';
 import Pricing from './pages/Pricing';
+import Rankings from './pages/Rankings';
 import Task from './pages/Task';
 import ModelPage from './pages/Model';
 import ModelDeploymentPage from './pages/ModelDeployment';
 import Playground from './pages/Playground';
 import Subscription from './pages/Subscription';
+import Affiliates from './pages/Affiliates';
+import AdminPaymentDashboard from './pages/Orders/AdminPaymentDashboard';
+import AdminOrders from './pages/Orders/AdminOrders';
+import AdminLuckyWheel from './pages/Orders/AdminLuckyWheel';
+import AdminRechargeActivity from './pages/Orders/AdminRechargeActivity';
+import MyOrders from './pages/Orders/MyOrders';
+import LuckyWheel from './pages/Orders/LuckyWheel';
+import RechargeActivity from './pages/Orders/RechargeActivity';
 import OAuth2Callback from './components/auth/OAuth2Callback';
 import PersonalSetting from './components/settings/PersonalSetting';
 import Setup from './pages/Setup';
@@ -99,6 +114,14 @@ function App() {
           }
         />
         <Route
+          path='/home'
+          element={
+            <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+              <Home />
+            </Suspense>
+          }
+        />
+        <Route
           path='/setup'
           element={
             <Suspense fallback={<Loading></Loading>} key={location.pathname}>
@@ -128,6 +151,46 @@ function App() {
           element={
             <AdminRoute>
               <Subscription />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/affiliates'
+          element={
+            <AdminRoute>
+              <Affiliates />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/orders/dashboard'
+          element={
+            <AdminRoute>
+              <AdminPaymentDashboard />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/orders'
+          element={
+            <AdminRoute>
+              <AdminOrders />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/orders/lucky-wheel'
+          element={
+            <AdminRoute>
+              <AdminLuckyWheel />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/orders/recharge-activity'
+          element={
+            <AdminRoute>
+              <AdminRechargeActivity />
             </AdminRoute>
           }
         />
@@ -278,6 +341,36 @@ function App() {
           }
         />
         <Route
+          path='/console/my-orders'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <MyOrders />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/lucky-wheel'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <LuckyWheel />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/recharge-activity'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <RechargeActivity />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
           path='/console/log'
           element={
             <PrivateRoute>
@@ -316,6 +409,16 @@ function App() {
           }
         />
         <Route
+          path='/console/rankings'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
+                <Rankings />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
+        <Route
           path='/pricing'
           element={
             pricingRequireAuth ? (
@@ -333,6 +436,10 @@ function App() {
               </Suspense>
             )
           }
+        />
+        <Route
+          path='/rankings'
+          element={<Navigate to='/console/rankings' replace />}
         />
         <Route
           path='/about'

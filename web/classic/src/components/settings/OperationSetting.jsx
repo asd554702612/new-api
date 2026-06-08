@@ -27,6 +27,7 @@ import SettingsLog from '../../pages/Setting/Operation/SettingsLog';
 import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring';
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
+import SettingsSMS from '../../pages/Setting/Operation/SettingsSMS';
 import { API, showError, toBoolean } from '../../helpers';
 
 const OperationSetting = () => {
@@ -36,6 +37,10 @@ const OperationSetting = () => {
     PreConsumedQuota: 0,
     QuotaForInviter: 0,
     QuotaForInvitee: 0,
+    AffiliateWithdrawEnabled: false,
+    AffiliateWithdrawMinQuota: 0,
+    AffiliateWithdrawDailyLimit: 3,
+    AffiliateWithdrawHelpText: '',
     'quota_setting.enable_free_model_pre_consume': true,
 
     /* 通用设置 */
@@ -49,6 +54,13 @@ const OperationSetting = () => {
     DefaultCollapseSidebar: false,
     DemoSiteEnabled: false,
     SelfUseModeEnabled: false,
+
+    /* 短信与手机号验证设置 */
+    PhoneVerificationEnabled: false,
+    SMSIHuyiEnabled: false,
+    SMSIHuyiAPIID: '',
+    SMSIHuyiAPIKey: '',
+    SMSIHuyiTemplateID: '',
 
     /* 顶栏模块管理 */
     HeaderNavModules: '',
@@ -78,6 +90,8 @@ const OperationSetting = () => {
     'checkin_setting.enabled': false,
     'checkin_setting.min_quota': 1000,
     'checkin_setting.max_quota': 10000,
+    'weekly_quota_setting.enabled': false,
+    'weekly_quota_setting.amount': 0,
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,
@@ -125,6 +139,10 @@ const OperationSetting = () => {
         {/* 通用设置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsGeneral options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* 短信与手机号验证设置 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsSMS options={inputs} refresh={onRefresh} />
         </Card>
         {/* 顶栏模块管理 */}
         <div style={{ marginTop: '10px' }}>

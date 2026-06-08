@@ -468,7 +468,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			return nil, errors.New("已达到该套餐购买上限")
 		}
 	}
-	nowUnix := GetDBTimestamp()
+	nowUnix := GetDBTimestampTx(tx)
 	now := time.Unix(nowUnix, 0)
 	endUnix, err := calcPlanEndTime(now, plan)
 	if err != nil {
@@ -542,12 +542,16 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 			return ErrPaymentMethodMismatch
 		}
 		if order.Status == common.TopUpStatusSuccess {
-			return nil
+			plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
+			if err != nil {
+				return err
+			}
+			return GrantPaymentActivitiesForSubscriptionTx(tx, &order, plan)
 		}
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
 		}
-		plan, err := GetSubscriptionPlanById(order.PlanId)
+		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
 		if err != nil {
 			return err
 		}
@@ -571,6 +575,15 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 			order.PaymentMethod = actualPaymentMethod
 		}
 		if err := tx.Save(&order).Error; err != nil {
+			return err
+		}
+		rebateBaseQuota := int(decimal.NewFromFloat(order.Money).
+			Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+			IntPart())
+		if _, err := ApplyAffiliateRebateTx(tx, order.UserId, rebateBaseQuota, order.TradeNo, AffiliateSourceOrderTypeSubscription, order.PaymentMethod); err != nil {
+			return err
+		}
+		if err := GrantPaymentActivitiesForSubscriptionTx(tx, &order, plan); err != nil {
 			return err
 		}
 		logUserId = order.UserId

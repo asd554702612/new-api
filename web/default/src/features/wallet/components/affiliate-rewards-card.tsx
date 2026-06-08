@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Share2 } from 'lucide-react'
+import { List, Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatQuota } from '@/lib/format'
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,9 @@ interface AffiliateRewardsCardProps {
   user: UserWalletData | null
   affiliateLink: string
   onTransfer: () => void
+  onOpenRecords: () => void
+  affiliateEnabled?: boolean
+  rebateRate?: number
   complianceConfirmed?: boolean
   loading?: boolean
 }
@@ -38,6 +41,9 @@ export function AffiliateRewardsCard({
   user,
   affiliateLink,
   onTransfer,
+  onOpenRecords,
+  affiliateEnabled = false,
+  rebateRate = 0,
   complianceConfirmed = true,
   loading,
 }: AffiliateRewardsCardProps) {
@@ -58,6 +64,7 @@ export function AffiliateRewardsCard({
   }
 
   const hasRewards = (user?.aff_quota ?? 0) > 0
+  const showRebateRate = affiliateEnabled && rebateRate > 0
 
   return (
     <Card className='bg-muted/20 py-0'>
@@ -71,9 +78,11 @@ export function AffiliateRewardsCard({
               {t('Referral Program')}
             </h3>
             <p className='text-muted-foreground line-clamp-1 text-xs'>
-              {t(
-                'Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.'
-              )}
+              {showRebateRate
+                ? t('Cashback rate: {{rate}}%', { rate: rebateRate })
+                : t(
+                    'Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.'
+                  )}
             </p>
           </div>
         </div>
@@ -109,6 +118,16 @@ export function AffiliateRewardsCard({
             tooltip={t('Copy referral link')}
             aria-label={t('Copy referral link')}
           />
+          <Button
+            variant='outline'
+            size='icon'
+            onClick={onOpenRecords}
+            className='bg-background size-9 shrink-0'
+            title={t('Referral Records')}
+            aria-label={t('Referral Records')}
+          >
+            <List className='size-4' />
+          </Button>
           {hasRewards && (
             <Button
               onClick={onTransfer}

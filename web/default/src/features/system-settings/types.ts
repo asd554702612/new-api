@@ -69,12 +69,14 @@ export type SiteSettings = {
   'legal.privacy_policy': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
+  UsageLeaderboardIgnoredUserIds: string
 }
 
 export type AuthSettings = {
   PasswordLoginEnabled: boolean
   PasswordRegisterEnabled: boolean
   EmailVerificationEnabled: boolean
+  PhoneVerificationEnabled: boolean
   RegisterEnabled: boolean
   EmailDomainRestrictionEnabled: boolean
   EmailAliasRestrictionEnabled: boolean
@@ -188,6 +190,8 @@ export type BillingSettings = {
   PreConsumedQuota: number
   QuotaForInviter: number
   QuotaForInvitee: number
+  AffiliateEnabled: boolean
+  AffiliateRebateRate: number
   TopUpLink: string
   'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean
@@ -263,6 +267,27 @@ export type BillingSettings = {
   // section (saved via /api/option/waffo-pancake/save).
   WaffoPancakeStoreID: string
   WaffoPancakeProductID: string
+  WechatPayEnabled: boolean
+  WechatPayAppID: string
+  WechatPayMchID: string
+  WechatPayAPIv3Key: string
+  WechatPayPrivateKey: string
+  WechatPayMerchantSerialNo: string
+  WechatPayNotifyURL: string
+  WechatPayReturnURL: string
+  WechatPayJSAPIEnabled: boolean
+  WechatPayH5Enabled: boolean
+  WechatPayNativeEnabled: boolean
+  AlipayEnabled: boolean
+  AlipayAppID: string
+  AlipayPrivateKey: string
+  AlipayPublicKey: string
+  AlipaySandbox: boolean
+  AlipayNotifyURL: string
+  AlipayReturnURL: string
+  AlipayPageEnabled: boolean
+  AlipayWapEnabled: boolean
+  AlipayFaceEnabled: boolean
   'checkin_setting.enabled': boolean
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number
@@ -289,6 +314,10 @@ export type OperationsSettings = {
   SMTPToken: string
   SMTPSSLEnabled: boolean
   SMTPForceAuthLogin: boolean
+  SMSIHuyiEnabled: boolean
+  SMSIHuyiAPIID: string
+  SMSIHuyiAPIKey: string
+  SMSIHuyiTemplateID: string
   WorkerUrl: string
   WorkerValidKey: string
   WorkerAllowHttpImageRequestEnabled: boolean

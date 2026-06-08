@@ -32,7 +32,7 @@ import {
   renderQuota,
   stringToColor,
 } from '../../../../helpers';
-import { Coins, BarChart2, Users } from 'lucide-react';
+import { Coins, BarChart2, Phone, Users } from 'lucide-react';
 
 const UserInfoHeader = ({ t, userState }) => {
   const getUsername = () => {
@@ -162,6 +162,20 @@ const UserInfoHeader = ({ t, userState }) => {
                   {userState?.user?.group || t('默认')}
                 </Typography.Text>
               </div>
+              {userState?.user?.phone_number && (
+                <>
+                  <Divider layout='vertical' />
+                  <div className='flex items-center gap-2'>
+                    <Phone size={16} />
+                    <Typography.Text size='small' type='tertiary'>
+                      {t('手机号')}
+                    </Typography.Text>
+                    <Typography.Text size='small' type='tertiary' strong>
+                      {userState.user.phone_number}
+                    </Typography.Text>
+                  </div>
+                </>
+              )}
             </div>
           </Card>
         </div>
@@ -210,6 +224,22 @@ const UserInfoHeader = ({ t, userState }) => {
                 {userState?.user?.group || t('默认')}
               </Typography.Text>
             </div>
+            {userState?.user?.phone_number && (
+              <>
+                <Divider margin='8px' />
+                <div className='flex items-center justify-between'>
+                  <div className='flex items-center gap-2'>
+                    <Phone size={16} />
+                    <Typography.Text size='small' type='tertiary'>
+                      {t('手机号')}
+                    </Typography.Text>
+                  </div>
+                  <Typography.Text size='small' type='tertiary' strong>
+                    {userState.user.phone_number}
+                  </Typography.Text>
+                </div>
+              </>
+            )}
           </div>
         </Card>
       </div>
