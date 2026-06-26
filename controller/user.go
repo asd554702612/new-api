@@ -55,6 +55,11 @@ func Login(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	normalizedPhone := common.NormalizePhoneNumber(username, "86")
+	if common.IsPhoneVerificationEnabled() && normalizedPhone != "" && !common.LooksLikeEmailIdentifier(username) {
+		common.ApiErrorMsg(c, "手机号登录请使用短信验证码")
+		return
+	}
 	user := model.User{
 		Username: username,
 		Password: password,
@@ -77,7 +82,7 @@ func Login(c *gin.Context) {
 }
 
 func loginByPhoneVerificationCode(c *gin.Context, loginRequest LoginRequest) {
-	if !common.PhoneVerificationEnabled {
+	if !common.IsPhoneVerificationEnabled() {
 		common.ApiErrorMsg(c, "手机验证未启用")
 		return
 	}
@@ -209,7 +214,7 @@ func Register(c *gin.Context) {
 		common.ApiErrorMsg(c, "手机号格式无效")
 		return
 	}
-	if common.PhoneVerificationEnabled {
+	if common.IsPhoneVerificationEnabled() {
 		if user.PhoneVerificationCode == "" {
 			common.ApiErrorMsg(c, "请输入短信验证码")
 			return
@@ -547,6 +552,18 @@ func GetAffiliateInviteRecords(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+func GetAffiliateInviterRecords(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.GetAffiliateInviterRecords(pageInfo, getAffiliateRecordFilter(c))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func GetAffiliateRebateRecords(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	records, total, err := model.GetAffiliateRebateLedgers(pageInfo, getAffiliateRecordFilter(c))
@@ -616,6 +633,23 @@ func GetAffiliateUserOverview(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, overview)
+}
+
+func GetAffiliateInviteeDetails(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil || id <= 0 {
+		common.ApiError(c, errors.New("invalid user id"))
+		return
+	}
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.GetAffiliateInviteeDetails(id, pageInfo, getAffiliateRecordFilter(c))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
 }
 
 func UpdateAffiliateUserSettings(c *gin.Context) {
@@ -816,6 +850,8 @@ func getAffiliateRecordFilter(c *gin.Context) model.AffiliateRecordFilter {
 		Status:    c.Query("status"),
 		StartTime: parseAffiliateTimeQuery(c.Query("start_time"), c.Query("start_at"), false),
 		EndTime:   parseAffiliateTimeQuery(c.Query("end_time"), c.Query("end_at"), true),
+		SortBy:    c.Query("sort_by"),
+		SortOrder: c.Query("sort_order"),
 	}
 }
 
@@ -1019,6 +1055,11 @@ func GetUserModels(c *gin.Context) {
 				models = append(models, g)
 			}
 		}
+	}
+	models, err = service.FilterModelNamesByUserSelection(id, models)
+	if err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -1226,7 +1267,7 @@ func UpdateSelf(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
-		if currentUser.PhoneNumber != phoneNumber && common.PhoneVerificationEnabled {
+		if currentUser.PhoneNumber != phoneNumber && common.IsPhoneVerificationEnabled() {
 			if user.PhoneVerificationCode == "" {
 				common.ApiErrorMsg(c, "请输入短信验证码")
 				return

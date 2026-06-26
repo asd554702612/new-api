@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { PlanSubscriptionsDrawer } from './dialogs/plan-subscriptions-drawer'
 import { ToggleStatusDialog } from './dialogs/toggle-status-dialog'
 import { SubscriptionsMutateDrawer } from './subscriptions-mutate-drawer'
 import { useSubscriptions } from './subscriptions-provider'
@@ -30,6 +31,11 @@ export function SubscriptionsDialogs() {
         open={open === 'create' || isUpdate}
         onOpenChange={(isOpen) => !isOpen && setOpen(null)}
         currentRow={isUpdate ? currentRow || undefined : undefined}
+      />
+      <PlanSubscriptionsDrawer
+        open={open === 'plan-subscriptions'}
+        onOpenChange={(isOpen) => !isOpen && setOpen(null)}
+        currentRow={currentRow}
       />
       <ToggleStatusDialog />
     </>

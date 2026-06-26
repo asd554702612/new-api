@@ -145,6 +145,36 @@ type AffiliateAdminUserRecord struct {
 	CreatedAt            int64    `json:"created_at"`
 }
 
+type AffiliateInviterRecord struct {
+	UserId               int      `json:"user_id"`
+	Username             string   `json:"username"`
+	Email                string   `json:"email"`
+	AffCode              string   `json:"aff_code"`
+	AffCodeCustom        bool     `json:"aff_code_custom"`
+	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent"`
+	AffCount             int      `json:"aff_count"`
+	AffQuota             int      `json:"aff_quota"`
+	AffHistoryQuota      int      `json:"aff_history_quota"`
+	IdentityStatus       string   `json:"identity_status"`
+	IdentityExpiresAt    int64    `json:"identity_expires_at"`
+	RateMultiplier       float64  `json:"rate_multiplier"`
+	CreatedAt            int64    `json:"created_at"`
+}
+
+type AffiliateInviteeDetailRecord struct {
+	UserId                int     `json:"user_id"`
+	Username              string  `json:"username"`
+	Email                 string  `json:"email"`
+	InviterId             int     `json:"inviter_id"`
+	CumulativeRebateQuota int     `json:"cumulative_rebate_quota"`
+	RiskFlagged           bool    `json:"risk_flagged"`
+	RiskReason            string  `json:"risk_reason"`
+	IdentityStatus        string  `json:"identity_status"`
+	IdentityExpiresAt     int64   `json:"identity_expires_at"`
+	RateMultiplier        float64 `json:"rate_multiplier"`
+	CreatedAt             int64   `json:"created_at"`
+}
+
 type AffiliateUserOverview struct {
 	AffiliateAdminUserRecord
 	InviterUsername string             `json:"inviter_username"`
@@ -224,6 +254,8 @@ type AffiliateRecordFilter struct {
 	Status    string
 	StartTime int64
 	EndTime   int64
+	SortBy    string
+	SortOrder string
 }
 
 func DefaultAffiliateIdentityConfig() AffiliateIdentityConfig {
@@ -418,8 +450,47 @@ func GetAffiliateAdminUsers(pageInfo *common.PageInfo, filter AffiliateRecordFil
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	query = applyAffiliateSort(query, filter, map[string]string{
+		"created_at":              "u.created_at",
+		"aff_count":               "u.aff_count",
+		"aff_quota":               "u.aff_quota",
+		"aff_history_quota":       "u.aff_history",
+		"aff_rebate_rate_percent": "u.aff_rebate_rate_percent",
+	}, "u.created_at desc", "u.id desc")
 	if err := query.Select("u.id AS user_id, u.username, u.email, u.aff_code, u.aff_code_custom, u.aff_rebate_rate_percent, u.aff_count, u.aff_quota, u.aff_history AS aff_history_quota, u.inviter_id, u.created_at").
-		Order("u.id desc").
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Scan(&records).Error; err != nil {
+		return nil, 0, err
+	}
+	return records, total, nil
+}
+
+func GetAffiliateInviterRecords(pageInfo *common.PageInfo, filter AffiliateRecordFilter) ([]*AffiliateInviterRecord, int64, error) {
+	var records []*AffiliateInviterRecord
+	var total int64
+	if pageInfo == nil {
+		pageInfo = &common.PageInfo{}
+	}
+	now := time.Now().Unix()
+	activeStatus := AffiliateIdentityStatusActive
+	if !common.AffiliateIdentityEnabled {
+		activeStatus = "__disabled__"
+	}
+	query := DB.Table("users AS u").
+		Joins("LEFT JOIN affiliate_identities AS i ON i.user_id = u.id AND i.identity_type = ? AND i.status = ? AND i.expires_at > ?", AffiliateIdentityTypeInviter, activeStatus, now).
+		Where("u.aff_count > ?", 0)
+	query = applyAffiliateSingleUserSearch(query, filter.Search, "u")
+	query = applyAffiliateTimeFilter(query, filter.StartTime, filter.EndTime, "u.created_at")
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	query = applyAffiliateSort(query, filter, map[string]string{
+		"created_at":        "u.created_at",
+		"aff_count":         "u.aff_count",
+		"aff_history_quota": "u.aff_history",
+	}, "u.created_at desc", "u.id desc")
+	if err := query.Select("u.id AS user_id, u.username, u.email, u.aff_code, u.aff_code_custom, u.aff_rebate_rate_percent, u.aff_count, u.aff_quota, u.aff_history AS aff_history_quota, i.status AS identity_status, i.expires_at AS identity_expires_at, i.rate_multiplier, u.created_at").
 		Limit(pageInfo.GetPageSize()).
 		Offset(pageInfo.GetStartIdx()).
 		Scan(&records).Error; err != nil {
@@ -460,6 +531,47 @@ func GetAffiliateUserOverview(userID int) (*AffiliateUserOverview, error) {
 	return &overview, nil
 }
 
+func GetAffiliateInviteeDetails(inviterID int, pageInfo *common.PageInfo, filter AffiliateRecordFilter) ([]*AffiliateInviteeDetailRecord, int64, error) {
+	var records []*AffiliateInviteeDetailRecord
+	var total int64
+	if inviterID <= 0 {
+		return records, 0, nil
+	}
+	if pageInfo == nil {
+		pageInfo = &common.PageInfo{}
+	}
+	now := time.Now().Unix()
+	activeStatus := AffiliateIdentityStatusActive
+	if !common.AffiliateIdentityEnabled {
+		activeStatus = "__disabled__"
+	}
+	rebateSubQuery := DB.Model(&AffiliateLedger{}).
+		Select("related_user_id, COALESCE(SUM(quota), 0) AS cumulative_rebate_quota").
+		Where("user_id = ? AND action IN ?", inviterID, []string{AffiliateLedgerActionAccrue, AffiliateLedgerActionSignupBonus}).
+		Group("related_user_id")
+	query := DB.Table("users AS u").
+		Joins("LEFT JOIN (?) AS rebate ON rebate.related_user_id = u.id", rebateSubQuery).
+		Joins("LEFT JOIN affiliate_signup_fingerprints AS f ON f.user_id = u.id").
+		Joins("LEFT JOIN affiliate_identities AS i ON i.user_id = u.id AND i.identity_type = ? AND i.status = ? AND i.expires_at > ?", AffiliateIdentityTypeInvitee, activeStatus, now).
+		Where("u.inviter_id = ?", inviterID)
+	query = applyAffiliateSingleUserSearch(query, filter.Search, "u")
+	query = applyAffiliateTimeFilter(query, filter.StartTime, filter.EndTime, "u.created_at")
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	query = applyAffiliateSort(query, filter, map[string]string{
+		"created_at":              "u.created_at",
+		"cumulative_rebate_quota": "COALESCE(rebate.cumulative_rebate_quota, 0)",
+	}, "u.created_at desc", "u.id desc")
+	if err := query.Select("u.id AS user_id, u.username, u.email, u.inviter_id, COALESCE(rebate.cumulative_rebate_quota, 0) AS cumulative_rebate_quota, f.risk_flagged, f.risk_reason, i.status AS identity_status, i.expires_at AS identity_expires_at, i.rate_multiplier, u.created_at").
+		Limit(pageInfo.GetPageSize()).
+		Offset(pageInfo.GetStartIdx()).
+		Scan(&records).Error; err != nil {
+		return nil, 0, err
+	}
+	return records, total, nil
+}
+
 func ClearAffiliateUserSettings(userID int) error {
 	code := common.GetRandomString(4)
 	return DB.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{
@@ -483,8 +595,12 @@ func GetAffiliateFingerprintRecords(pageInfo *common.PageInfo, filter AffiliateR
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	query = applyAffiliateSort(query, filter, map[string]string{
+		"created_at":      "f.created_at",
+		"duplicate_count": "f.duplicate_count",
+		"risk_flagged":    "f.risk_flagged",
+	}, "f.created_at desc", "f.id desc")
 	if err := query.Select("f.*, u.username, u.email").
-		Order("f.id desc").
 		Limit(pageInfo.GetPageSize()).
 		Offset(pageInfo.GetStartIdx()).
 		Scan(&records).Error; err != nil {
@@ -1149,9 +1265,11 @@ func GetAffiliateInviteRecords(pageInfo *common.PageInfo, filter AffiliateRecord
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	query = applyAffiliateSort(query, filter, map[string]string{
+		"created_at": "u.created_at",
+	}, "u.created_at desc", "u.id desc")
 	if err := query.
 		Select("u.id AS user_id, u.username, u.email, u.aff_code, u.inviter_id, inviter.username AS inviter_username, inviter.email AS inviter_email, u.created_at").
-		Order("u.id desc").
 		Limit(pageInfo.GetPageSize()).
 		Offset(pageInfo.GetStartIdx()).
 		Scan(&records).Error; err != nil {
@@ -1192,9 +1310,13 @@ func GetAffiliateWithdrawalRecords(pageInfo *common.PageInfo, filter AffiliateRe
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	query = applyAffiliateSort(query, filter, map[string]string{
+		"created_at": "w.created_at",
+		"quota":      "w.quota",
+		"status":     "w.status",
+	}, "w.created_at desc", "w.id desc")
 	if err := query.
 		Select("w.*, u.username, u.email").
-		Order("w.id desc").
 		Limit(pageInfo.GetPageSize()).
 		Offset(pageInfo.GetStartIdx()).
 		Scan(&records).Error; err != nil {
@@ -1218,9 +1340,12 @@ func listAffiliateLedgerRecords(actions []string, pageInfo *common.PageInfo, fil
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
+	query = applyAffiliateSort(query, filter, map[string]string{
+		"created_at": "l.created_at",
+		"quota":      "l.quota",
+	}, "l.created_at desc", "l.id desc")
 	if err := query.
 		Select("l.*, u.username, u.email, related.username AS related_username, related.email AS related_email").
-		Order("l.id desc").
 		Limit(pageInfo.GetPageSize()).
 		Offset(pageInfo.GetStartIdx()).
 		Scan(&records).Error; err != nil {
@@ -1267,6 +1392,19 @@ func applyAffiliateTimeFilter(query *gorm.DB, startTime int64, endTime int64, co
 		query = query.Where(column+" <= ?", endTime)
 	}
 	return query
+}
+
+func applyAffiliateSort(query *gorm.DB, filter AffiliateRecordFilter, allowedColumns map[string]string, defaultOrder string, tieBreaker string) *gorm.DB {
+	sortBy := strings.TrimSpace(filter.SortBy)
+	sortColumn, ok := allowedColumns[sortBy]
+	if !ok || sortColumn == "" {
+		return query.Order(defaultOrder).Order(tieBreaker)
+	}
+	order := "desc"
+	if strings.EqualFold(strings.TrimSpace(filter.SortOrder), "asc") {
+		order = "asc"
+	}
+	return query.Order(sortColumn + " " + order).Order(tieBreaker)
 }
 
 func listAffiliateLedgers(query *gorm.DB, pageInfo *common.PageInfo) ([]*AffiliateLedger, int64, error) {

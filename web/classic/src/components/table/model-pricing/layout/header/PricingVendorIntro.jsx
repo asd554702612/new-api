@@ -150,12 +150,16 @@ const PricingVendorIntro = memo(
     setShowWithRecharge,
     currency,
     setCurrency,
+    siteDisplayType,
     showRatio,
     setShowRatio,
     viewMode,
     setViewMode,
     tokenUnit,
     setTokenUnit,
+    modelSquareSelectionEnabled,
+    selectionSaving,
+    saveModelSelections,
   }) => {
     const [currentOffset, setCurrentOffset] = useState(0);
     const [descModalVisible, setDescModalVisible] = useState(false);
@@ -285,12 +289,16 @@ const PricingVendorIntro = memo(
           setShowWithRecharge={setShowWithRecharge}
           currency={currency}
           setCurrency={setCurrency}
+          siteDisplayType={siteDisplayType}
           showRatio={showRatio}
           setShowRatio={setShowRatio}
           viewMode={viewMode}
           setViewMode={setViewMode}
           tokenUnit={tokenUnit}
           setTokenUnit={setTokenUnit}
+          modelSquareSelectionEnabled={modelSquareSelectionEnabled}
+          selectionSaving={selectionSaving}
+          saveModelSelections={saveModelSelections}
           t={t}
         />
       ),
@@ -307,12 +315,16 @@ const PricingVendorIntro = memo(
         setShowWithRecharge,
         currency,
         setCurrency,
+        siteDisplayType,
         showRatio,
         setShowRatio,
         viewMode,
         setViewMode,
         tokenUnit,
         setTokenUnit,
+        modelSquareSelectionEnabled,
+        selectionSaving,
+        saveModelSelections,
         t,
       ],
     );

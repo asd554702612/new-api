@@ -1015,6 +1015,16 @@ func DeltaUpdateUserQuota(id int, delta int) (err error) {
 	}
 }
 
+func DeltaUpdateUserQuotaTx(tx *gorm.DB, id int, delta int64) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if delta == 0 {
+		return nil
+	}
+	return tx.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota + ?", delta)).Error
+}
+
 //func GetRootUserEmail() (email string) {
 //	DB.Model(&User{}).Where("role = ?", common.RoleRootUser).Select("email").Find(&email)
 //	return email

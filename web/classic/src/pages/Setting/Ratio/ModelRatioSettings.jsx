@@ -37,6 +37,26 @@ import {
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
+const VIDEO_BILLING_RULES_FIELD = 'video_billing_setting.rules';
+const VIDEO_BILLING_RULES_EXAMPLE = `{
+  "happyhorse-1.0-t2v": {
+    "mode": "per_second",
+    "base_price": 0.03
+  },
+  "happyhorse-1.0-i2v": {
+    "mode": "matrix",
+    "base_price": 0.04,
+    "multipliers": {
+      "resolution": { "720p": 1, "1080p": 1.5 },
+      "duration": { "5": 1, "10": 2 }
+    }
+  },
+  "happyhorse-1.0-r2v": {
+    "mode": "expr",
+    "expr": "seconds * 0.05 * (param(\\"resolution\\") == \\"1080p\\" ? 1.5 : 1)"
+  }
+}`;
+
 export default function ModelRatioSettings(props) {
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
@@ -48,6 +68,7 @@ export default function ModelRatioSettings(props) {
     ImageRatio: '',
     AudioRatio: '',
     AudioCompletionRatio: '',
+    [VIDEO_BILLING_RULES_FIELD]: '',
     ExposeRatioEnabled: false,
   });
   const refForm = useRef();
@@ -315,6 +336,31 @@ export default function ModelRatioSettings(props) {
               ]}
               onChange={(value) =>
                 setInputs({ ...inputs, AudioCompletionRatio: value })
+              }
+            />
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col xs={24} sm={16}>
+            <Form.TextArea
+              label={`${t('视频')} ${t('规则')}`}
+              extraText={t('为一个 JSON 文本，键为模型名称，值为视频计费规则')}
+              placeholder={VIDEO_BILLING_RULES_EXAMPLE}
+              field={VIDEO_BILLING_RULES_FIELD}
+              autosize={{ minRows: 8, maxRows: 18 }}
+              trigger='blur'
+              stopValidateWithError
+              rules={[
+                {
+                  validator: (rule, value) => verifyJSON(value),
+                  message: '不是合法的 JSON 字符串',
+                },
+              ]}
+              onChange={(value) =>
+                setInputs({
+                  ...inputs,
+                  [VIDEO_BILLING_RULES_FIELD]: value,
+                })
               }
             />
           </Col>

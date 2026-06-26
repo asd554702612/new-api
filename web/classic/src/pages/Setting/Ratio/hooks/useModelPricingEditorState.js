@@ -22,15 +22,30 @@ import {
   combineBillingExpr,
   splitBillingExprAndRequestRules,
 } from '../components/requestRuleExpr';
+import {
+  VIDEO_RESOLUTION_PRESETS,
+  buildVideoBillingRule,
+  buildPreviewRows,
+  buildSummaryText,
+  hasValue,
+} from './modelPricingStateLogic';
 
 export const PAGE_SIZE = 10;
 export const PRICE_SUFFIX = '$/1M tokens';
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
 
+const createEmptyVideoResolutionMultipliers = () =>
+  VIDEO_RESOLUTION_PRESETS.reduce((acc, resolution) => {
+    acc[resolution] = '';
+    return acc;
+  }, {});
+
 const EMPTY_MODEL = {
   name: '',
   billingMode: 'per-token',
   fixedPrice: '',
+  videoSecondPrice: '',
+  videoResolutionMultipliers: createEmptyVideoResolutionMultipliers(),
   inputPrice: '',
   completionPrice: '',
   lockedCompletionRatio: '',
@@ -55,9 +70,6 @@ const EMPTY_MODEL = {
 };
 
 const NUMERIC_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;
-
-export const hasValue = (value) =>
-  value !== '' && value !== null && value !== undefined && value !== false;
 
 const toNumericString = (value) => {
   if (!hasValue(value) && value !== 0) {
@@ -121,7 +133,41 @@ const normalizeCompletionRatioMeta = (rawMeta) => {
   };
 };
 
+const normalizeVideoResolutionMultipliers = (rawMultipliers) => {
+  const normalized = createEmptyVideoResolutionMultipliers();
+  if (
+    !rawMultipliers ||
+    typeof rawMultipliers !== 'object' ||
+    Array.isArray(rawMultipliers)
+  ) {
+    return normalized;
+  }
+
+  Object.entries(rawMultipliers).forEach(([resolution, multiplier]) => {
+    normalized[resolution] = toNumericString(multiplier);
+  });
+  return normalized;
+};
+
 const buildModelState = (name, sourceMaps) => {
+  const videoRule = sourceMaps.VideoBillingRules?.[name];
+  if (videoRule?.mode === 'per_second' || videoRule?.mode === 'matrix') {
+    return {
+      ...EMPTY_MODEL,
+      name,
+      billingMode: 'video_per_second',
+      videoSecondPrice: toNumericString(videoRule.base_price),
+      videoResolutionMultipliers:
+        videoRule.mode === 'matrix'
+          ? normalizeVideoResolutionMultipliers(
+              videoRule.multipliers?.resolution,
+            )
+          : createEmptyVideoResolutionMultipliers(),
+      rawRatios: { ...EMPTY_MODEL.rawRatios },
+      hasConflict: false,
+    };
+  }
+
   const billingMode = sourceMaps.ModelBillingMode?.[name];
   if (billingMode === 'tiered_expr') {
     const fullBillingExpr = sourceMaps.ModelBillingExpr?.[name] || '';
@@ -133,6 +179,7 @@ const buildModelState = (name, sourceMaps) => {
       billingMode: 'tiered_expr',
       billingExpr,
       requestRuleExpr,
+      videoResolutionMultipliers: createEmptyVideoResolutionMultipliers(),
       rawRatios: { ...EMPTY_MODEL.rawRatios },
       hasConflict: false,
     };
@@ -164,6 +211,7 @@ const buildModelState = (name, sourceMaps) => {
     billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
     fixedPrice,
     inputPrice,
+    videoResolutionMultipliers: createEmptyVideoResolutionMultipliers(),
     completionRatioLocked: completionRatioMeta.locked,
     lockedCompletionRatio: completionRatioMeta.ratio,
     completionPrice:
@@ -224,14 +272,20 @@ const buildModelState = (name, sourceMaps) => {
 };
 
 export const isBasePricingUnset = (model) =>
-  model.billingMode !== 'tiered_expr' &&
-  !hasValue(model.fixedPrice) && !hasValue(model.inputPrice);
+  model.billingMode === 'tiered_expr'
+    ? false
+    : model.billingMode === 'video_per_second'
+      ? !hasValue(model.videoSecondPrice)
+      : !hasValue(model.fixedPrice) && !hasValue(model.inputPrice);
 
 export const getModelWarnings = (model, t) => {
   if (!model) {
     return [];
   }
-  if (model.billingMode === 'tiered_expr') {
+  if (
+    model.billingMode === 'tiered_expr' ||
+    model.billingMode === 'video_per_second'
+  ) {
     return [];
   }
   const warnings = [];
@@ -286,42 +340,6 @@ export const getModelWarnings = (model, t) => {
   }
 
   return warnings;
-};
-
-export const buildSummaryText = (model, t) => {
-  const requestRuleSuffix =
-    model.billingMode === 'tiered_expr' && model.requestRuleExpr
-    ? `，${t('请求规则')}`
-    : '';
-  if (model.billingMode === 'tiered_expr') {
-    const expr = model.billingExpr;
-    if (!expr) return `${t('表达式计费')}${requestRuleSuffix}`;
-    const tierCount = (expr.match(/tier\(/g) || []).length;
-    if (tierCount === 0) {
-      return `${t('表达式计费')}${requestRuleSuffix}`;
-    }
-    return `${t('阶梯计费')} (${tierCount} ${t('档')})${requestRuleSuffix}`;
-  }
-
-  if (model.billingMode === 'per-request' && hasValue(model.fixedPrice)) {
-    return `${t('按次')} $${model.fixedPrice} / ${t('次')}${requestRuleSuffix}`;
-  }
-
-  if (hasValue(model.inputPrice)) {
-    const extraCount = [
-      model.completionPrice,
-      model.cachePrice,
-      model.createCachePrice,
-      model.imagePrice,
-      model.audioInputPrice,
-      model.audioOutputPrice,
-    ].filter(hasValue).length;
-    const extraLabel =
-      extraCount > 0 ? `，${t('额外价格项')} ${extraCount}` : '';
-    return `${t('输入')} $${model.inputPrice}${extraLabel}${requestRuleSuffix}`;
-  }
-
-  return `${t('未设置价格')}${requestRuleSuffix}`;
 };
 
 export const buildOptionalFieldToggles = (model) => ({
@@ -452,170 +470,11 @@ const serializeModel = (model, t) => {
   return result;
 };
 
-export const buildPreviewRows = (model, t) => {
-  if (!model) return [];
-  const finalBillingExpr = combineBillingExpr(
-    model.billingExpr,
-    model.requestRuleExpr,
-  );
-
-  if (model.billingMode === 'tiered_expr') {
-    const rows = [
-      {
-        key: 'BillingMode',
-        label: 'ModelBillingMode',
-        value: 'tiered_expr',
-      },
-    ];
-    if (finalBillingExpr) {
-      const tierCount = (model.billingExpr.match(/tier\(/g) || []).length;
-      rows.push({
-        key: 'BillingExpr',
-        label: 'ModelBillingExpr',
-        value:
-          tierCount > 0
-            ? `${tierCount} ${t('档')} — ${
-                finalBillingExpr.length > 60
-                  ? finalBillingExpr.slice(0, 60) + '...'
-                  : finalBillingExpr
-              }`
-            : finalBillingExpr.length > 60
-              ? finalBillingExpr.slice(0, 60) + '...'
-              : finalBillingExpr,
-      });
-    }
-    return rows;
-  }
-
-  if (model.billingMode === 'per-request') {
-    const rows = [
-      {
-        key: 'ModelPrice',
-        label: 'ModelPrice',
-        value: hasValue(model.fixedPrice) ? model.fixedPrice : t('空'),
-      },
-    ];
-    return rows;
-  }
-
-  const inputPrice = toNumberOrNull(model.inputPrice);
-  if (inputPrice === null) {
-    const rows = [
-      {
-        key: 'ModelRatio',
-        label: 'ModelRatio',
-        value: hasValue(model.rawRatios.modelRatio)
-          ? model.rawRatios.modelRatio
-          : t('空'),
-      },
-      {
-        key: 'CompletionRatio',
-        label: 'CompletionRatio',
-        value: hasValue(model.rawRatios.completionRatio)
-          ? model.rawRatios.completionRatio
-          : t('空'),
-      },
-      {
-        key: 'CacheRatio',
-        label: 'CacheRatio',
-        value: hasValue(model.rawRatios.cacheRatio)
-          ? model.rawRatios.cacheRatio
-          : t('空'),
-      },
-      {
-        key: 'CreateCacheRatio',
-        label: 'CreateCacheRatio',
-        value: hasValue(model.rawRatios.createCacheRatio)
-          ? model.rawRatios.createCacheRatio
-          : t('空'),
-      },
-      {
-        key: 'ImageRatio',
-        label: 'ImageRatio',
-        value: hasValue(model.rawRatios.imageRatio)
-          ? model.rawRatios.imageRatio
-          : t('空'),
-      },
-      {
-        key: 'AudioRatio',
-        label: 'AudioRatio',
-        value: hasValue(model.rawRatios.audioRatio)
-          ? model.rawRatios.audioRatio
-          : t('空'),
-      },
-      {
-        key: 'AudioCompletionRatio',
-        label: 'AudioCompletionRatio',
-        value: hasValue(model.rawRatios.audioCompletionRatio)
-          ? model.rawRatios.audioCompletionRatio
-          : t('空'),
-      },
-    ];
-    return rows;
-  }
-
-  const completionPrice = toNumberOrNull(model.completionPrice);
-  const cachePrice = toNumberOrNull(model.cachePrice);
-  const createCachePrice = toNumberOrNull(model.createCachePrice);
-  const imagePrice = toNumberOrNull(model.imagePrice);
-  const audioInputPrice = toNumberOrNull(model.audioInputPrice);
-  const audioOutputPrice = toNumberOrNull(model.audioOutputPrice);
-
-  const rows = [
-    {
-      key: 'ModelRatio',
-      label: 'ModelRatio',
-      value: formatNumber(inputPrice / 2),
-    },
-    {
-      key: 'CompletionRatio',
-      label: 'CompletionRatio',
-      value: model.completionRatioLocked
-        ? `${model.lockedCompletionRatio || t('空')} (${t('后端固定')})`
-        : completionPrice !== null
-          ? formatNumber(completionPrice / inputPrice)
-          : t('空'),
-    },
-    {
-      key: 'CacheRatio',
-      label: 'CacheRatio',
-      value:
-        cachePrice !== null ? formatNumber(cachePrice / inputPrice) : t('空'),
-    },
-    {
-      key: 'CreateCacheRatio',
-      label: 'CreateCacheRatio',
-      value:
-        createCachePrice !== null
-          ? formatNumber(createCachePrice / inputPrice)
-          : t('空'),
-    },
-    {
-      key: 'ImageRatio',
-      label: 'ImageRatio',
-      value:
-        imagePrice !== null ? formatNumber(imagePrice / inputPrice) : t('空'),
-    },
-    {
-      key: 'AudioRatio',
-      label: 'AudioRatio',
-      value:
-        audioInputPrice !== null
-          ? formatNumber(audioInputPrice / inputPrice)
-          : t('空'),
-    },
-    {
-      key: 'AudioCompletionRatio',
-      label: 'AudioCompletionRatio',
-      value:
-        audioOutputPrice !== null &&
-        audioInputPrice !== null &&
-        audioInputPrice !== 0
-          ? formatNumber(audioOutputPrice / audioInputPrice)
-          : t('空'),
-    },
-  ];
-  return rows;
+export {
+  VIDEO_RESOLUTION_PRESETS,
+  buildPreviewRows,
+  buildSummaryText,
+  hasValue,
 };
 
 export function useModelPricingEditorState({
@@ -646,8 +505,15 @@ export function useModelPricingEditorState({
       ImageRatio: parseOptionJSON(options.ImageRatio),
       AudioRatio: parseOptionJSON(options.AudioRatio),
       AudioCompletionRatio: parseOptionJSON(options.AudioCompletionRatio),
-      ModelBillingMode: parseOptionJSON(options['billing_setting.billing_mode']),
-      ModelBillingExpr: parseOptionJSON(options['billing_setting.billing_expr']),
+      ModelBillingMode: parseOptionJSON(
+        options['billing_setting.billing_mode'],
+      ),
+      ModelBillingExpr: parseOptionJSON(
+        options['billing_setting.billing_expr'],
+      ),
+      VideoBillingRules: parseOptionJSON(
+        options['video_billing_setting.rules'],
+      ),
     };
 
     const names = new Set([
@@ -663,6 +529,7 @@ export function useModelPricingEditorState({
       ...Object.keys(sourceMaps.AudioCompletionRatio),
       ...Object.keys(sourceMaps.ModelBillingMode),
       ...Object.keys(sourceMaps.ModelBillingExpr),
+      ...Object.keys(sourceMaps.VideoBillingRules),
     ]);
 
     const nextModels = Array.from(names)
@@ -872,6 +739,21 @@ export function useModelPricingEditorState({
     });
   };
 
+  const handleVideoResolutionMultiplierChange = (resolution, value) => {
+    if (!selectedModel || !NUMERIC_INPUT_REGEX.test(value)) {
+      return;
+    }
+
+    upsertModel(selectedModel.name, (model) => ({
+      ...model,
+      videoResolutionMultipliers: {
+        ...createEmptyVideoResolutionMultipliers(),
+        ...(model.videoResolutionMultipliers || {}),
+        [resolution]: value,
+      },
+    }));
+  };
+
   const handleBillingModeChange = (value) => {
     if (!selectedModel) return;
     upsertModel(selectedModel.name, (model) => {
@@ -913,6 +795,7 @@ export function useModelPricingEditorState({
     const nextModel = {
       ...EMPTY_MODEL,
       name: trimmedName,
+      videoResolutionMultipliers: createEmptyVideoResolutionMultipliers(),
       rawRatios: { ...EMPTY_MODEL.rawRatios },
     };
 
@@ -964,6 +847,11 @@ export function useModelPricingEditorState({
           ...model,
           billingMode: selectedModel.billingMode,
           fixedPrice: selectedModel.fixedPrice,
+          videoSecondPrice: selectedModel.videoSecondPrice,
+          videoResolutionMultipliers: {
+            ...createEmptyVideoResolutionMultipliers(),
+            ...(selectedModel.videoResolutionMultipliers || {}),
+          },
           inputPrice: selectedModel.inputPrice,
           completionPrice: selectedModel.completionPrice,
           cachePrice: selectedModel.cachePrice,
@@ -1038,6 +926,9 @@ export function useModelPricingEditorState({
         'billing_setting.billing_mode': {},
         'billing_setting.billing_expr': {},
       };
+      const videoBillingOutput = {
+        'video_billing_setting.rules': {},
+      };
 
       for (const model of models) {
         if (model.billingMode === 'tiered_expr') {
@@ -1046,8 +937,26 @@ export function useModelPricingEditorState({
             model.requestRuleExpr,
           );
           if (finalBillingExpr) {
-            tieredOutput['billing_setting.billing_mode'][model.name] = 'tiered_expr';
-            tieredOutput['billing_setting.billing_expr'][model.name] = finalBillingExpr;
+            tieredOutput['billing_setting.billing_mode'][model.name] =
+              'tiered_expr';
+            tieredOutput['billing_setting.billing_expr'][model.name] =
+              finalBillingExpr;
+          }
+        }
+
+        if (model.billingMode === 'video_per_second') {
+          const { rule, invalidResolution } = buildVideoBillingRule(model);
+          if (invalidResolution) {
+            throw new Error(
+              t('模型 {{name}} 的分辨率倍率必须大于 0', {
+                name: model.name,
+              }),
+            );
+          }
+          if (rule) {
+            videoBillingOutput['video_billing_setting.rules'][model.name] =
+              rule;
+            continue;
           }
         }
 
@@ -1077,6 +986,12 @@ export function useModelPricingEditorState({
           }),
         ),
         ...Object.entries(tieredOutput).map(([key, value]) =>
+          API.put('/api/option/', {
+            key,
+            value: JSON.stringify(value, null, 2),
+          }),
+        ),
+        ...Object.entries(videoBillingOutput).map(([key, value]) =>
           API.put('/api/option/', {
             key,
             value: JSON.stringify(value, null, 2),
@@ -1122,6 +1037,7 @@ export function useModelPricingEditorState({
     isOptionalFieldEnabled,
     handleOptionalFieldToggle,
     handleNumericFieldChange,
+    handleVideoResolutionMultiplierChange,
     handleBillingModeChange,
     handleBillingExprChange,
     handleRequestRuleExprChange,

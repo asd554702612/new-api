@@ -379,6 +379,14 @@ function App() {
           }
         />
         <Route
+          path='/console/admin/log'
+          element={
+            <AdminRoute>
+              <Log adminMode />
+            </AdminRoute>
+          }
+        />
+        <Route
           path='/console'
           element={
             <PrivateRoute>

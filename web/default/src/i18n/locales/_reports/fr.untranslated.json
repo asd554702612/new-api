@@ -1,0 +1,19 @@
+{
+  "0 means unlimited. The value is converted to quota units when saved.": "0 means unlimited. The value is converted to quota units when saved.",
+  "After payment succeeds, the order will be credited automatically.": "After payment succeeds, the order will be credited automatically.",
+  "API key is loading, please try again in a moment": "API key is loading, please try again in a moment",
+  "Complete the payment in your mobile app": "Complete the payment in your mobile app",
+  "Face-to-face QR": "Face-to-face QR",
+  "Failed to create account": "Failed to create account",
+  "Failed to load playground groups": "Failed to load playground groups",
+  "Failed to load playground models": "Failed to load playground models",
+  "Failed to send reset email": "Failed to send reset email",
+  "Failed to send verification email": "Failed to send verification email",
+  "Leave blank to use server address": "Leave blank to use server address",
+  "No model price changes to save": "No model price changes to save",
+  "Password must be between 8 and 20 characters": "Password must be between 8 and 20 characters",
+  "Protect login and registration with Cloudflare Turnstile": "Protect login and registration with Cloudflare Turnstile",
+  "Scan to Pay": "Scan to Pay",
+  "The merchant private key must be PEM PKCS8 format and the API v3 key must be exactly 32 characters.": "The merchant private key must be PEM PKCS8 format and the API v3 key must be exactly 32 characters.",
+  "Use the Alipay sandbox gateway": "Use the Alipay sandbox gateway"
+}

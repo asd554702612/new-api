@@ -8,19 +8,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setWeeklyQuotaTestSetting(t *testing.T, enabled bool, amount int) {
+func setWeeklyQuotaTestSetting(t *testing.T, enabled bool, planId int, periodDays int) {
 	t.Helper()
 	setting := operation_setting.GetWeeklyQuotaSetting()
 	originalEnabled := setting.Enabled
 	originalAmount := setting.Amount
+	originalPlanId := setting.PlanId
+	originalPeriodDays := setting.PeriodDays
 	originalPhoneVerificationEnabled := common.PhoneVerificationEnabled
 	t.Cleanup(func() {
 		setting.Enabled = originalEnabled
 		setting.Amount = originalAmount
+		setting.PlanId = originalPlanId
+		setting.PeriodDays = originalPeriodDays
 		common.PhoneVerificationEnabled = originalPhoneVerificationEnabled
 	})
 	setting.Enabled = enabled
-	setting.Amount = amount
+	setting.Amount = 0
+	setting.PlanId = planId
+	setting.PeriodDays = periodDays
 }
 
 func createWeeklyQuotaTestUser(t *testing.T, id int, createdAt int64, phoneNumber string) *User {
@@ -45,9 +51,27 @@ func getWeeklyQuotaTestUserQuota(t *testing.T, userId int) int {
 	return user.Quota
 }
 
+func createWeeklyQuotaTestPlan(t *testing.T, id int, enabled bool) *SubscriptionPlan {
+	t.Helper()
+	plan := &SubscriptionPlan{
+		Id:            id,
+		Title:         "Gift Plan",
+		Subtitle:      "Claimable subscription",
+		PriceAmount:   0,
+		Currency:      "USD",
+		DurationUnit:  SubscriptionDurationDay,
+		DurationValue: 30,
+		Enabled:       enabled,
+		TotalAmount:   12345,
+	}
+	require.NoError(t, DB.Create(plan).Error)
+	return plan
+}
+
 func TestGetWeeklyQuotaStatusDisabled(t *testing.T) {
 	truncateTables(t)
-	setWeeklyQuotaTestSetting(t, false, 500)
+	plan := createWeeklyQuotaTestPlan(t, 7101, true)
+	setWeeklyQuotaTestSetting(t, false, plan.Id, 7)
 	user := createWeeklyQuotaTestUser(t, 7001, 1_700_000_000, "")
 
 	status, err := GetWeeklyQuotaStatus(user.Id, 1_700_000_100)
@@ -55,44 +79,70 @@ func TestGetWeeklyQuotaStatusDisabled(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, status.Enabled)
 	require.Equal(t, WeeklyQuotaStatusDisabled, status.Status)
-	require.Equal(t, 500, status.Amount)
+	require.Equal(t, plan.Id, status.PlanId)
+	require.Equal(t, 7, status.PeriodDays)
 }
 
-func TestClaimWeeklyQuotaIncreasesQuotaAndBlocksDuplicateWindow(t *testing.T) {
+func TestClaimWeeklyQuotaCreatesGiftSubscriptionAndBlocksDuplicateWindow(t *testing.T) {
 	truncateTables(t)
-	setWeeklyQuotaTestSetting(t, true, 500)
+	plan := createWeeklyQuotaTestPlan(t, 7102, true)
+	setWeeklyQuotaTestSetting(t, true, plan.Id, 7)
 	common.PhoneVerificationEnabled = false
-	user := createWeeklyQuotaTestUser(t, 7002, 1_700_000_000, "")
+	user := createWeeklyQuotaTestUser(t, 7002, 1_700_000_000, "+8613800138000")
 
 	claim, err := ClaimWeeklyQuota(user.Id, 1_700_000_100)
 
 	require.NoError(t, err)
-	require.Equal(t, 500, claim.QuotaAwarded)
-	require.Equal(t, 600, getWeeklyQuotaTestUserQuota(t, user.Id))
+	require.Equal(t, plan.Id, claim.PlanId)
+	require.NotZero(t, claim.UserSubscriptionId)
+	require.Equal(t, 100, getWeeklyQuotaTestUserQuota(t, user.Id))
+
+	var sub UserSubscription
+	require.NoError(t, DB.Where("id = ?", claim.UserSubscriptionId).First(&sub).Error)
+	require.Equal(t, user.Id, sub.UserId)
+	require.Equal(t, plan.Id, sub.PlanId)
+	require.Equal(t, SubscriptionSourceGiftClaim, sub.Source)
+	require.Equal(t, plan.TotalAmount, sub.AmountTotal)
+	require.Equal(t, "active", sub.Status)
 
 	_, err = ClaimWeeklyQuota(user.Id, 1_700_000_200)
 	require.ErrorIs(t, err, ErrWeeklyQuotaAlreadyClaimed)
-	require.Equal(t, 600, getWeeklyQuotaTestUserQuota(t, user.Id))
+	require.Equal(t, 100, getWeeklyQuotaTestUserQuota(t, user.Id))
 }
 
-func TestClaimWeeklyQuotaNextWindowAllowed(t *testing.T) {
+func TestClaimWeeklyQuotaNextWindowBlockedWhenSamePlanStillActive(t *testing.T) {
 	truncateTables(t)
-	setWeeklyQuotaTestSetting(t, true, 500)
+	plan := createWeeklyQuotaTestPlan(t, 7103, true)
+	setWeeklyQuotaTestSetting(t, true, plan.Id, 7)
 	common.PhoneVerificationEnabled = false
-	user := createWeeklyQuotaTestUser(t, 7003, 1_700_000_000, "")
+	user := createWeeklyQuotaTestUser(t, 7003, 1_700_000_000, "+8613800138000")
 
 	_, err := ClaimWeeklyQuota(user.Id, 1_700_000_100)
 	require.NoError(t, err)
-	claim, err := ClaimWeeklyQuota(user.Id, 1_700_000_000+7*24*60*60+10)
+	_, err = ClaimWeeklyQuota(user.Id, 1_700_000_000+7*24*60*60+10)
+
+	require.ErrorIs(t, err, ErrWeeklyQuotaActiveSubscriptionExists)
+	require.Equal(t, 100, getWeeklyQuotaTestUserQuota(t, user.Id))
+}
+
+func TestClaimWeeklyQuotaAllowsDisabledGiftPlan(t *testing.T) {
+	truncateTables(t)
+	plan := createWeeklyQuotaTestPlan(t, 7104, false)
+	setWeeklyQuotaTestSetting(t, true, plan.Id, 7)
+	common.PhoneVerificationEnabled = false
+	user := createWeeklyQuotaTestUser(t, 7007, 1_700_000_000, "+8613800138000")
+
+	claim, err := ClaimWeeklyQuota(user.Id, 1_700_000_100)
 
 	require.NoError(t, err)
-	require.Equal(t, int64(1_700_000_000+7*24*60*60), claim.WindowStart)
-	require.Equal(t, 1100, getWeeklyQuotaTestUserQuota(t, user.Id))
+	require.Equal(t, plan.Id, claim.PlanId)
+	require.NotZero(t, claim.UserSubscriptionId)
 }
 
 func TestClaimWeeklyQuotaRequiresBoundPhoneWhenPhoneVerificationEnabled(t *testing.T) {
 	truncateTables(t)
-	setWeeklyQuotaTestSetting(t, true, 500)
+	plan := createWeeklyQuotaTestPlan(t, 7105, true)
+	setWeeklyQuotaTestSetting(t, true, plan.Id, 7)
 	common.PhoneVerificationEnabled = true
 	user := createWeeklyQuotaTestUser(t, 7004, 1_700_000_000, "")
 
@@ -102,15 +152,35 @@ func TestClaimWeeklyQuotaRequiresBoundPhoneWhenPhoneVerificationEnabled(t *testi
 	require.Equal(t, 100, getWeeklyQuotaTestUserQuota(t, user.Id))
 }
 
+func TestClaimWeeklyQuotaRequiresBoundPhoneWhenPhoneVerificationDisabled(t *testing.T) {
+	truncateTables(t)
+	plan := createWeeklyQuotaTestPlan(t, 7106, true)
+	setWeeklyQuotaTestSetting(t, true, plan.Id, 7)
+	common.PhoneVerificationEnabled = false
+	user := createWeeklyQuotaTestUser(t, 7006, 1_700_000_000, "")
+
+	status, err := GetWeeklyQuotaStatus(user.Id, 1_700_000_100)
+	require.NoError(t, err)
+	require.True(t, status.Enabled)
+	require.Equal(t, WeeklyQuotaStatusPhoneRequired, status.Status)
+	require.Equal(t, plan.Id, status.PlanId)
+
+	_, err = ClaimWeeklyQuota(user.Id, 1_700_000_100)
+	require.ErrorIs(t, err, ErrWeeklyQuotaPhoneRequired)
+	require.Equal(t, 100, getWeeklyQuotaTestUserQuota(t, user.Id))
+}
+
 func TestClaimWeeklyQuotaAllowsBoundPhone(t *testing.T) {
 	truncateTables(t)
-	setWeeklyQuotaTestSetting(t, true, 500)
+	plan := createWeeklyQuotaTestPlan(t, 7107, true)
+	setWeeklyQuotaTestSetting(t, true, plan.Id, 7)
 	common.PhoneVerificationEnabled = true
 	user := createWeeklyQuotaTestUser(t, 7005, 1_700_000_000, "+8613800138000")
 
 	claim, err := ClaimWeeklyQuota(user.Id, 1_700_000_100)
 
 	require.NoError(t, err)
-	require.Equal(t, 500, claim.QuotaAwarded)
-	require.Equal(t, 600, getWeeklyQuotaTestUserQuota(t, user.Id))
+	require.Equal(t, plan.Id, claim.PlanId)
+	require.NotZero(t, claim.UserSubscriptionId)
+	require.Equal(t, 100, getWeeklyQuotaTestUserQuota(t, user.Id))
 }

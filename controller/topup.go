@@ -84,7 +84,7 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 		if !hasWechatPay {
 			payMethods = append(payMethods, map[string]string{
-				"name":      "WeChat Pay",
+				"name":      "微信支付",
 				"type":      model.PaymentMethodWechatPay,
 				"color":     "#07C160",
 				"min_topup": strconv.FormatInt(getMinTopup(), 10),
@@ -106,6 +106,25 @@ func GetTopUpInfo(c *gin.Context) {
 				"type":      model.PaymentMethodAlipayDirect,
 				"color":     "#1677FF",
 				"min_topup": strconv.FormatInt(getMinTopup(), 10),
+			})
+		}
+	}
+
+	casdoorMinTopUp := topUpMinForCurrentDisplay(setting.GetCasdoorPaymentMinTopUp())
+	if isCasdoorTopUpEnabled() {
+		hasCasdoor := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodCasdoor {
+				hasCasdoor = true
+				break
+			}
+		}
+		if !hasCasdoor {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "Casdoor 统一支付",
+				"type":      model.PaymentMethodCasdoor,
+				"color":     "#3B82F6",
+				"min_topup": strconv.FormatInt(casdoorMinTopUp, 10),
 			})
 		}
 	}
@@ -140,6 +159,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_waffo_pancake_topup":       enableWaffoPancake,
 		"enable_wechat_pay_topup":          isWechatPayTopUpEnabled(),
 		"enable_alipay_topup":              isAlipayTopUpEnabled(),
+		"enable_casdoor_topup":             isCasdoorTopUpEnabled(),
 		"enable_redemption":                complianceConfirmed,
 		"affiliate_enabled":                common.AffiliateEnabled,
 		"affiliate_rebate_rate":            common.AffiliateRebateRate,
@@ -164,6 +184,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"stripe_min_topup":        setting.StripeMinTopUp,
 		"waffo_min_topup":         setting.WaffoMinTopUp,
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
+		"casdoor_min_topup":       casdoorMinTopUp,
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 		"topup_link":              common.TopUpLink,
@@ -229,7 +250,14 @@ func getPayMoneyWithUnitPrice(amount int64, group string, unitPrice float64) flo
 }
 
 func getMinTopup() int64 {
-	minTopup := operation_setting.MinTopUp
+	return topUpMinForCurrentDisplay(operation_setting.MinTopUp)
+}
+
+func topUpMinForCurrentDisplay(configuredMinTopUp int) int64 {
+	minTopup := configuredMinTopUp
+	if minTopup <= 0 {
+		minTopup = 1
+	}
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		dMinTopup := decimal.NewFromInt(int64(minTopup))
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)

@@ -36,13 +36,14 @@ const PhoneBindModal = ({
   turnstileEnabled,
   turnstileSiteKey,
   setTurnstileToken,
+  currentPhoneNumber,
 }) => {
   return (
     <Modal
       title={
         <div className='flex items-center'>
           <IconPhone className='mr-2 text-blue-500' />
-          {t('绑定手机号')}
+          {currentPhoneNumber ? t('修改手机号') : t('绑定手机号')}
         </div>
       }
       visible={showPhoneBindModal}

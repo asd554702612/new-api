@@ -47,6 +47,9 @@ const PricingTopSection = memo(
     setViewMode,
     tokenUnit,
     setTokenUnit,
+    modelSquareSelectionEnabled,
+    selectionSaving,
+    saveModelSelections,
     t,
   }) => {
     const [showFilterModal, setShowFilterModal] = useState(false);
@@ -76,6 +79,9 @@ const PricingTopSection = memo(
                 setViewMode={setViewMode}
                 tokenUnit={tokenUnit}
                 setTokenUnit={setTokenUnit}
+                modelSquareSelectionEnabled={modelSquareSelectionEnabled}
+                selectionSaving={selectionSaving}
+                saveModelSelections={saveModelSelections}
                 t={t}
               />
             </div>
@@ -112,6 +118,9 @@ const PricingTopSection = memo(
             setViewMode={setViewMode}
             tokenUnit={tokenUnit}
             setTokenUnit={setTokenUnit}
+            modelSquareSelectionEnabled={modelSquareSelectionEnabled}
+            selectionSaving={selectionSaving}
+            saveModelSelections={saveModelSelections}
           />
         )}
       </>

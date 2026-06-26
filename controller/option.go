@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/QuantumNous/new-api/setting/video_billing_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -85,7 +86,8 @@ func GetOptions(c *gin.Context) {
 			strings.HasSuffix(k, "Secret") ||
 			strings.HasSuffix(k, "Key") ||
 			strings.HasSuffix(k, "secret") ||
-			strings.HasSuffix(k, "api_key")
+			strings.HasSuffix(k, "api_key") ||
+			k == "oidc.host_clients"
 		if isSensitiveKey {
 			continue
 		}
@@ -167,10 +169,10 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "oidc.enabled":
-		if option.Value == "true" && system_setting.GetOIDCSettings().ClientId == "" {
+		if option.Value == "true" && !system_setting.GetOIDCSettings().HasUsableClient() {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": "无法启用 OIDC 登录，请先填入 OIDC Client Id 以及 OIDC Client Secret！",
+				"message": "无法启用 OIDC 登录，请先填入完整的全局 OIDC 配置或 Host OIDC 客户端配置！",
 			})
 			return
 		}
@@ -265,6 +267,15 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "缓存创建倍率设置失败: " + err.Error(),
+			})
+			return
+		}
+	case "video_billing_setting.rules":
+		err = video_billing_setting.ValidateRulesJSON(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "视频计费设置失败: " + err.Error(),
 			})
 			return
 		}

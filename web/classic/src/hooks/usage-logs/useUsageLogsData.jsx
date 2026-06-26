@@ -43,7 +43,7 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 
-export const useLogsData = () => {
+export const useLogsData = ({ adminMode = false } = {}) => {
   const { t } = useTranslation();
 
   // Define column keys for selection
@@ -76,7 +76,7 @@ export const useLogsData = () => {
   const [logType, setLogType] = useState(0);
 
   // User and admin
-  const isAdminUser = isAdmin();
+  const isAdminUser = adminMode && isAdmin();
   // Role-specific storage key to prevent different roles from overwriting each other
   const STORAGE_KEY = isAdminUser
     ? 'logs-table-columns-admin'
@@ -96,6 +96,7 @@ export const useLogsData = () => {
   let now = new Date();
   const formInitValues = {
     username: '',
+    user_id: '',
     token_name: '',
     model_name: '',
     channel: '',
@@ -164,7 +165,9 @@ export const useLogsData = () => {
   };
 
   // Column visibility state
-  const [visibleColumns, setVisibleColumns] = useState(getInitialVisibleColumns);
+  const [visibleColumns, setVisibleColumns] = useState(
+    getInitialVisibleColumns,
+  );
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [billingDisplayMode, setBillingDisplayMode] = useState(
     getInitialBillingDisplayMode,
@@ -250,6 +253,7 @@ export const useLogsData = () => {
 
     return {
       username: formValues.username || '',
+      user_id: formValues.user_id || '',
       token_name: formValues.token_name || '',
       model_name: formValues.model_name || '',
       start_timestamp,
@@ -259,6 +263,27 @@ export const useLogsData = () => {
       request_id: formValues.request_id || '',
       logType: formValues.logType ? parseInt(formValues.logType) : 0,
     };
+  };
+
+  const toApiTimestamp = (value) => {
+    const timestamp = Date.parse(value) / 1000;
+    return Number.isNaN(timestamp) ? undefined : timestamp;
+  };
+
+  const buildQueryString = (params) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        Number.isNaN(value)
+      ) {
+        return;
+      }
+      query.append(key, String(value));
+    });
+    return query.toString();
   };
 
   // Statistics functions
@@ -272,10 +297,15 @@ export const useLogsData = () => {
       logType: formLogType,
     } = getFormValues();
     const currentLogType = formLogType !== undefined ? formLogType : logType;
-    let localStartTimestamp = Date.parse(start_timestamp) / 1000;
-    let localEndTimestamp = Date.parse(end_timestamp) / 1000;
-    let url = `/api/log/self/stat?type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}`;
-    url = encodeURI(url);
+    const query = buildQueryString({
+      type: currentLogType,
+      token_name,
+      model_name,
+      start_timestamp: toApiTimestamp(start_timestamp),
+      end_timestamp: toApiTimestamp(end_timestamp),
+      group,
+    });
+    const url = `/api/log/self/stat?${query}`;
     let res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
@@ -288,6 +318,7 @@ export const useLogsData = () => {
   const getLogStat = async () => {
     const {
       username,
+      user_id,
       token_name,
       model_name,
       start_timestamp,
@@ -297,10 +328,18 @@ export const useLogsData = () => {
       logType: formLogType,
     } = getFormValues();
     const currentLogType = formLogType !== undefined ? formLogType : logType;
-    let localStartTimestamp = Date.parse(start_timestamp) / 1000;
-    let localEndTimestamp = Date.parse(end_timestamp) / 1000;
-    let url = `/api/log/stat?type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}`;
-    url = encodeURI(url);
+    const query = buildQueryString({
+      type: currentLogType,
+      username,
+      user_id,
+      token_name,
+      model_name,
+      start_timestamp: toApiTimestamp(start_timestamp),
+      end_timestamp: toApiTimestamp(end_timestamp),
+      channel,
+      group,
+    });
+    const url = `/api/log/stat?${query}`;
     let res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
@@ -383,7 +422,10 @@ export const useLogsData = () => {
       let other = getLogOther(logs[i].other);
       let expandDataLocal = [];
 
-      if (isAdminUser && (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)) {
+      if (
+        isAdminUser &&
+        (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)
+      ) {
         expandDataLocal.push({
           key: t('渠道信息'),
           value: `${logs[i].channel} - ${logs[i].channel_name || '[未知]'}`,
@@ -430,7 +472,10 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('日志详情'),
             value: other?.claude
-              ? renderClaudeLogContent({ ...other, displayMode: billingDisplayMode })
+              ? renderClaudeLogContent({
+                  ...other,
+                  displayMode: billingDisplayMode,
+                })
               : renderLogContent({ ...other, displayMode: billingDisplayMode }),
           });
         }
@@ -520,7 +565,14 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('失败原因'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {other.reason}
               </div>
             ),
@@ -537,7 +589,8 @@ export const useLogsData = () => {
         const ss = other.stream_status;
         const isOk = ss.status === 'ok';
         const statusLabel = isOk ? '✓ ' + t('正常') : '✗ ' + t('异常');
-        let streamValue = statusLabel + ' (' + (ss.end_reason || 'unknown') + ')';
+        let streamValue =
+          statusLabel + ' (' + (ss.end_reason || 'unknown') + ')';
         if (ss.error_count > 0) {
           streamValue += ` [${t('软错误')}: ${ss.error_count}]`;
         }
@@ -552,7 +605,14 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('流错误详情'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'pre-line', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'pre-line',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {ss.errors.join('\n')}
               </div>
             ),
@@ -732,6 +792,7 @@ export const useLogsData = () => {
     let url = '';
     const {
       username,
+      user_id,
       token_name,
       model_name,
       start_timestamp,
@@ -749,14 +810,36 @@ export const useLogsData = () => {
           ? formLogType
           : logType;
 
-    let localStartTimestamp = Date.parse(start_timestamp) / 1000;
-    let localEndTimestamp = Date.parse(end_timestamp) / 1000;
     if (isAdminUser) {
-      url = `/api/log/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}&request_id=${request_id}`;
+      const query = buildQueryString({
+        p: startIdx,
+        page_size: pageSize,
+        type: currentLogType,
+        username,
+        user_id,
+        token_name,
+        model_name,
+        start_timestamp: toApiTimestamp(start_timestamp),
+        end_timestamp: toApiTimestamp(end_timestamp),
+        channel,
+        group,
+        request_id,
+      });
+      url = `/api/log/?${query}`;
     } else {
-      url = `/api/log/self/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&request_id=${request_id}`;
+      const query = buildQueryString({
+        p: startIdx,
+        page_size: pageSize,
+        type: currentLogType,
+        token_name,
+        model_name,
+        start_timestamp: toApiTimestamp(start_timestamp),
+        end_timestamp: toApiTimestamp(end_timestamp),
+        group,
+        request_id,
+      });
+      url = `/api/log/self/?${query}`;
     }
-    url = encodeURI(url);
     const res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {

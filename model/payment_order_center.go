@@ -18,21 +18,29 @@ const (
 )
 
 type PaymentOrderRefund struct {
-	Id                 int     `json:"id"`
-	Source             string  `json:"source" gorm:"type:varchar(32);index:idx_payment_refund_source_order,priority:1"`
-	OrderType          string  `json:"order_type" gorm:"type:varchar(32);index"`
-	SourceOrderId      int     `json:"source_order_id" gorm:"index:idx_payment_refund_source_order,priority:2"`
-	SourceOrderTradeNo string  `json:"source_order_trade_no" gorm:"type:varchar(255);index"`
-	UserId             int     `json:"user_id" gorm:"index"`
-	Amount             float64 `json:"amount"`
-	Reason             string  `json:"reason" gorm:"type:text"`
-	Status             string  `json:"status" gorm:"type:varchar(32);index"`
-	RequestedBy        string  `json:"requested_by" gorm:"type:varchar(32);default:''"`
-	Force              bool    `json:"force" gorm:"default:false"`
-	DeductBalance      bool    `json:"deduct_balance" gorm:"default:false"`
-	CreateTime         int64   `json:"create_time" gorm:"index"`
-	UpdateTime         int64   `json:"update_time"`
-	ProcessTime        int64   `json:"process_time" gorm:"default:0"`
+	Id                   int     `json:"id"`
+	Source               string  `json:"source" gorm:"type:varchar(32);index:idx_payment_refund_source_order,priority:1"`
+	OrderType            string  `json:"order_type" gorm:"type:varchar(32);index"`
+	SourceOrderId        int     `json:"source_order_id" gorm:"index:idx_payment_refund_source_order,priority:2"`
+	SourceOrderTradeNo   string  `json:"source_order_trade_no" gorm:"type:varchar(255);index"`
+	UserId               int     `json:"user_id" gorm:"index"`
+	Amount               float64 `json:"amount"`
+	Reason               string  `json:"reason" gorm:"type:text"`
+	Status               string  `json:"status" gorm:"type:varchar(32);index"`
+	RequestedBy          string  `json:"requested_by" gorm:"type:varchar(32);default:''"`
+	Force                bool    `json:"force" gorm:"default:false"`
+	DeductBalance        bool    `json:"deduct_balance" gorm:"default:false"`
+	ProviderRefundNo     string  `json:"provider_refund_no" gorm:"type:varchar(128);index"`
+	ProviderRefundId     string  `json:"provider_refund_id" gorm:"type:varchar(128);index"`
+	ProviderRefundStatus string  `json:"provider_refund_status" gorm:"type:varchar(64);default:''"`
+	ProviderResponse     string  `json:"provider_response" gorm:"type:text"`
+	RefundCurrency       string  `json:"refund_currency" gorm:"type:varchar(16);default:''"`
+	RefundAmountCents    int64   `json:"refund_amount_cents" gorm:"type:bigint;default:0"`
+	TotalAmountCents     int64   `json:"total_amount_cents" gorm:"type:bigint;default:0"`
+	RollbackQuota        int64   `json:"rollback_quota" gorm:"type:bigint;default:0"`
+	CreateTime           int64   `json:"create_time" gorm:"index"`
+	UpdateTime           int64   `json:"update_time"`
+	ProcessTime          int64   `json:"process_time" gorm:"default:0"`
 }
 
 func (r *PaymentOrderRefund) BeforeCreate(tx *gorm.DB) error {

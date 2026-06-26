@@ -39,6 +39,7 @@ import TokensFilters from './TokensFilters';
 import TokensDescription from './TokensDescription';
 import EditTokenModal from './modals/EditTokenModal';
 import CCSwitchModal from './modals/CCSwitchModal';
+import UseApiKeyModal from './modals/UseApiKeyModal';
 import { useTokensData } from '../../../hooks/tokens/useTokensData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -47,9 +48,11 @@ function TokensPage() {
   // Define the function first, then pass it into the hook to avoid TDZ errors
   const openFluentNotificationRef = useRef(null);
   const openCCSwitchModalRef = useRef(null);
+  const openUseApiKeyModalRef = useRef(null);
   const tokensData = useTokensData(
     (key) => openFluentNotificationRef.current?.(key),
     (key) => openCCSwitchModalRef.current?.(key),
+    (key, tab) => openUseApiKeyModalRef.current?.(key, tab),
   );
   const isMobile = useIsMobile();
   const latestRef = useRef({
@@ -66,6 +69,9 @@ function TokensPage() {
   const [prefillKey, setPrefillKey] = useState('');
   const [ccSwitchVisible, setCCSwitchVisible] = useState(false);
   const [ccSwitchKey, setCCSwitchKey] = useState('');
+  const [useApiKeyVisible, setUseApiKeyVisible] = useState(false);
+  const [useApiKeyToken, setUseApiKeyToken] = useState('');
+  const [useApiKeyInitialTab, setUseApiKeyInitialTab] = useState('codex-app');
 
   // Keep latest data for handlers inside notifications
   useEffect(() => {
@@ -199,6 +205,13 @@ function TokensPage() {
     setCCSwitchVisible(true);
   }
   openCCSwitchModalRef.current = openCCSwitchModal;
+
+  function openUseApiKeyModal(key, tab = 'codex-app') {
+    setUseApiKeyToken(key || '');
+    setUseApiKeyInitialTab(tab);
+    setUseApiKeyVisible(true);
+  }
+  openUseApiKeyModalRef.current = openUseApiKeyModal;
 
   // Prefill to Fluent handler
   const handlePrefillToFluent = async () => {
@@ -389,6 +402,15 @@ function TokensPage() {
         onClose={() => setCCSwitchVisible(false)}
         tokenKey={ccSwitchKey}
         modelOptions={modelOptions}
+      />
+
+      <UseApiKeyModal
+        visible={useApiKeyVisible}
+        onCancel={() => setUseApiKeyVisible(false)}
+        tokenKey={useApiKeyToken}
+        initialTab={useApiKeyInitialTab}
+        copyText={tokensData.copyText}
+        t={tokensData.t}
       />
 
       <CardPro

@@ -2,13 +2,14 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +19,7 @@ import (
 const (
 	requestTimeout   = 30 * time.Second
 	httpTimeout      = 10 * time.Second
+	uptimeCacheTTL   = 30 * time.Second
 	uptimeKeySuffix  = "_24"
 	apiStatusPath    = "/api/status-page/"
 	apiHeartbeatPath = "/api/status-page/heartbeat/"
@@ -35,6 +37,17 @@ type UptimeGroupResult struct {
 	Monitors     []Monitor `json:"monitors"`
 }
 
+type uptimeKumaStatusCacheEntry struct {
+	key       string
+	results   []UptimeGroupResult
+	expiresAt time.Time
+}
+
+var uptimeKumaStatusCache = struct {
+	sync.RWMutex
+	entry uptimeKumaStatusCacheEntry
+}{}
+
 func getAndDecode(ctx context.Context, client *http.Client, url string, dest interface{}) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -51,7 +64,7 @@ func getAndDecode(ctx context.Context, client *http.Client, url string, dest int
 		return errors.New("non-200 status")
 	}
 
-	return json.NewDecoder(resp.Body).Decode(dest)
+	return common.DecodeJson(resp.Body, dest)
 }
 
 func fetchGroupData(ctx context.Context, client *http.Client, groupConfig map[string]interface{}) UptimeGroupResult {
@@ -134,6 +147,11 @@ func GetUptimeKumaStatus(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": []UptimeGroupResult{}})
 		return
 	}
+	cacheKey := uptimeKumaStatusCacheKey(groups)
+	if cached, ok := getUptimeKumaStatusCache(cacheKey); ok {
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": cached})
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 	defer cancel()
@@ -151,5 +169,49 @@ func GetUptimeKumaStatus(c *gin.Context) {
 	}
 
 	g.Wait()
+	setUptimeKumaStatusCache(cacheKey, results)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": results})
+}
+
+func uptimeKumaStatusCacheKey(groups []map[string]interface{}) string {
+	data, err := common.Marshal(groups)
+	if err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 10)
+	}
+	return string(data)
+}
+
+func getUptimeKumaStatusCache(key string) ([]UptimeGroupResult, bool) {
+	now := time.Now()
+	uptimeKumaStatusCache.RLock()
+	entry := uptimeKumaStatusCache.entry
+	uptimeKumaStatusCache.RUnlock()
+	if entry.key != key || !entry.expiresAt.After(now) {
+		return nil, false
+	}
+	return cloneUptimeGroupResults(entry.results), true
+}
+
+func setUptimeKumaStatusCache(key string, results []UptimeGroupResult) {
+	uptimeKumaStatusCache.Lock()
+	uptimeKumaStatusCache.entry = uptimeKumaStatusCacheEntry{
+		key:       key,
+		results:   cloneUptimeGroupResults(results),
+		expiresAt: time.Now().Add(uptimeCacheTTL),
+	}
+	uptimeKumaStatusCache.Unlock()
+}
+
+func cloneUptimeGroupResults(results []UptimeGroupResult) []UptimeGroupResult {
+	if results == nil {
+		return nil
+	}
+	cloned := make([]UptimeGroupResult, len(results))
+	for i, result := range results {
+		cloned[i] = result
+		if result.Monitors != nil {
+			cloned[i].Monitors = append([]Monitor(nil), result.Monitors...)
+		}
+	}
+	return cloned
 }

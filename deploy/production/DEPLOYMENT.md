@@ -40,6 +40,25 @@ ss -ltn | awk 'NR==1 || /:3000 /'
 
 启动 `new-api` 前，`3000` 端口检查应没有监听进程。
 
+生产部署必须在 `/opt/services/new-api/.env` 显式声明模型广场部署环境。打包产物可以复用同一套镜像，但生产运行配置不得依赖隐式默认值：
+
+```env
+# 国外生产环境
+MODEL_SQUARE_ENVIRONMENT=overseas
+
+# 国内生产环境
+MODEL_SQUARE_ENVIRONMENT=domestic
+```
+
+国内环境还应保持默认 GPT/OpenAI 常见模型禁选规则：
+
+```env
+MODEL_SQUARE_SELECTION_ENABLED=true
+MODEL_SQUARE_DOMESTIC_DENY_RULES=gpt*,chatgpt*,o1*,o3*,o4*,*claude*
+```
+
+`docker compose config` 会在缺少 `MODEL_SQUARE_ENVIRONMENT` 时失败，部署前必须先确认该值为 `overseas` 或 `domestic`。
+
 在 `43.160.242.244` 上，`sub2api-postgres` 和 `sub2api-redis` 是通过 host 网络访问的，不能从 `new-api` 容器内依赖 Docker 服务名解析。生产 compose 因此将 `host.docker.internal` 映射到 Docker `host-gateway`。服务器 `/opt/services/new-api/.env` 应使用：
 
 ```env
@@ -119,6 +138,15 @@ new-api:prod-YYYYMMDD-<git-short-sha>-amd64
 ```
 
 不要在生产 `.env` 中使用 `latest`、`local` 或其他会随时间变化的 tag。
+
+确认生产打包/运行环境约束：
+
+```bash
+grep -E '^MODEL_SQUARE_ENVIRONMENT=(overseas|domestic)$' .env
+docker compose config >/dev/null
+```
+
+国外环境应使用 `MODEL_SQUARE_ENVIRONMENT=overseas`；国内环境应使用 `MODEL_SQUARE_ENVIRONMENT=domestic`。
 
 启动服务：
 

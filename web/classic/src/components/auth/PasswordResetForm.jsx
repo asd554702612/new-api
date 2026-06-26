@@ -28,25 +28,30 @@ import {
 } from '../../helpers';
 import Turnstile from 'react-turnstile';
 import { Button, Card, Form, Typography } from '@douyinfe/semi-ui';
-import { IconMail } from '@douyinfe/semi-icons';
-import { Link } from 'react-router-dom';
+import { IconComment, IconLock, IconPhone } from '@douyinfe/semi-icons';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 const { Text, Title } = Typography;
 
 const PasswordResetForm = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [inputs, setInputs] = useState({
-    email: '',
+    phone_number: '',
+    sms_code: '',
+    password: '',
+    password2: '',
   });
-  const { email } = inputs;
+  const { phone_number, sms_code, password, password2 } = inputs;
 
   const [loading, setLoading] = useState(false);
+  const [smsCodeLoading, setSmsCodeLoading] = useState(false);
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
   const [disableButton, setDisableButton] = useState(false);
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(60);
 
   const logo = getLogo();
   const systemName = getSystemName();
@@ -66,41 +71,97 @@ const PasswordResetForm = () => {
     let countdownInterval = null;
     if (disableButton && countdown > 0) {
       countdownInterval = setInterval(() => {
-        setCountdown(countdown - 1);
+        setCountdown((countdown) => countdown - 1);
       }, 1000);
     } else if (countdown === 0) {
       setDisableButton(false);
-      setCountdown(30);
+      setCountdown(60);
     }
     return () => clearInterval(countdownInterval);
   }, [disableButton, countdown]);
 
-  function handleChange(value) {
-    setInputs((inputs) => ({ ...inputs, email: value }));
+  function handleChange(name, value) {
+    setInputs((inputs) => ({ ...inputs, [name]: value }));
   }
 
-  async function handleSubmit(e) {
-    if (!email) {
-      showError(t('请输入邮箱地址'));
+  const sendPhoneVerificationCode = async () => {
+    if (!phone_number) {
+      showError(t('请输入手机号'));
       return;
     }
     if (turnstileEnabled && turnstileToken === '') {
       showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
       return;
     }
-    setDisableButton(true);
-    setLoading(true);
-    const res = await API.get(
-      `/api/reset_password?email=${email}&turnstile=${turnstileToken}`,
-    );
-    const { success, message } = res.data;
-    if (success) {
-      showSuccess(t('重置邮件发送成功，请检查邮箱！'));
-      setInputs({ ...inputs, email: '' });
-    } else {
-      showError(message);
+    setSmsCodeLoading(true);
+    try {
+      const res = await API.post(
+        `/api/user/phone/verification?turnstile=${turnstileToken}`,
+        {
+          phone_number,
+          purpose: 'sms_password_reset',
+        },
+      );
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('短信验证码已发送'));
+        setDisableButton(true);
+        setCountdown(60);
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(t('发送短信验证码失败，请重试'));
+    } finally {
+      setSmsCodeLoading(false);
     }
-    setLoading(false);
+  };
+
+  async function handleSubmit(e) {
+    e?.preventDefault?.();
+    if (!phone_number) {
+      showError(t('请输入手机号'));
+      return;
+    }
+    if (!sms_code) {
+      showError(t('请输入短信验证码'));
+      return;
+    }
+    if (!password) {
+      showError(t('请输入新密码'));
+      return;
+    }
+    if (password.length < 8 || password.length > 20) {
+      showError(t('密码长度必须为 8 到 20 位'));
+      return;
+    }
+    if (password !== password2) {
+      showError(t('两次输入的密码不一致'));
+      return;
+    }
+    if (turnstileEnabled && turnstileToken === '') {
+      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await API.post('/api/user/reset', {
+        phone_number,
+        sms_code,
+        password,
+      });
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('密码重置成功，请使用新密码登录'));
+        navigate('/login');
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(t('重置密码失败，请重试'));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -131,15 +192,58 @@ const PasswordResetForm = () => {
                 </Title>
               </div>
               <div className='px-2 py-8'>
-                <Form className='space-y-3'>
+                <Form className='space-y-3' onSubmit={handleSubmit}>
                   <Form.Input
-                    field='email'
-                    label={t('邮箱')}
-                    placeholder={t('请输入您的邮箱地址')}
-                    name='email'
-                    value={email}
-                    onChange={handleChange}
-                    prefix={<IconMail />}
+                    field='phone_number'
+                    label={t('手机号')}
+                    placeholder={t('请输入手机号')}
+                    name='phone_number'
+                    value={phone_number}
+                    onChange={(value) => handleChange('phone_number', value)}
+                    prefix={<IconPhone />}
+                  />
+
+                  <Form.Input
+                    field='sms_code'
+                    label={t('短信验证码')}
+                    placeholder={t('请输入短信验证码')}
+                    name='sms_code'
+                    value={sms_code}
+                    onChange={(value) => handleChange('sms_code', value)}
+                    prefix={<IconComment />}
+                    suffix={
+                      <Button
+                        onClick={sendPhoneVerificationCode}
+                        loading={smsCodeLoading}
+                        disabled={disableButton || smsCodeLoading}
+                      >
+                        {disableButton
+                          ? `${t('重新发送')} (${countdown})`
+                          : t('获取验证码')}
+                      </Button>
+                    }
+                  />
+
+                  <Form.Input
+                    field='password'
+                    label={t('新密码')}
+                    placeholder={t('输入密码，最短 8 位，最长 20 位')}
+                    name='password'
+                    value={password}
+                    mode='password'
+                    onChange={(value) => handleChange('password', value)}
+                    prefix={<IconLock />}
+                  />
+
+                  <Form.Input
+                    field='password2'
+                    label={t('确认新密码')}
+                    placeholder={t('请再次输入新密码')}
+                    name='password2'
+                    value={password2}
+                    mode='password'
+                    onChange={(value) => handleChange('password2', value)}
+                    prefix={<IconLock />}
                   />
 
                   <div className='space-y-2 pt-2'>
@@ -148,13 +252,9 @@ const PasswordResetForm = () => {
                       className='w-full !rounded-full'
                       type='primary'
                       htmlType='submit'
-                      onClick={handleSubmit}
                       loading={loading}
-                      disabled={disableButton}
                     >
-                      {disableButton
-                        ? `${t('重试')} (${countdown})`
-                        : t('提交')}
+                      {t('重置密码')}
                     </Button>
                   </div>
                 </Form>

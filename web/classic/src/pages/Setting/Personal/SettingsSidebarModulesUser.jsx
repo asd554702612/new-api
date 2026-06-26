@@ -385,6 +385,11 @@ export default function SettingsSidebarModulesUser() {
           title: t('兑换码管理'),
           description: t('兑换码生成管理'),
         },
+        {
+          key: 'adminLog',
+          title: t('用户使用日志'),
+          description: t('查询全体用户 API 使用记录'),
+        },
         { key: 'user', title: t('用户管理'), description: t('用户账户管理') },
         {
           key: 'affiliates',

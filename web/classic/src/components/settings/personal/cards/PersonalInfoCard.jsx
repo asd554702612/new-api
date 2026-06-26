@@ -18,10 +18,16 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Avatar, Card, Typography } from '@douyinfe/semi-ui';
-import { Mail, Phone, User, Users } from 'lucide-react';
+import { Avatar, Button, Card, Typography } from '@douyinfe/semi-ui';
+import { Lock, Mail, Phone, User, Users } from 'lucide-react';
 
-const PersonalInfoCard = ({ t, user }) => {
+const PersonalInfoCard = ({
+  t,
+  user,
+  phoneVerificationEnabled,
+  onChangePhone,
+  onChangePassword,
+}) => {
   const items = [
     {
       icon: <User size={18} />,
@@ -47,17 +53,42 @@ const PersonalInfoCard = ({ t, user }) => {
 
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
-      <div className='flex items-center mb-4'>
-        <Avatar size='small' color='light-blue' className='mr-3 shadow-md'>
-          <User size={16} />
-        </Avatar>
-        <div>
-          <Typography.Text className='text-lg font-medium'>
-            {t('个人信息')}
-          </Typography.Text>
-          <div className='text-xs text-gray-600'>
-            {t('账号基础资料和联系方式')}
+      <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4'>
+        <div className='flex items-center'>
+          <Avatar size='small' color='light-blue' className='mr-3 shadow-md'>
+            <User size={16} />
+          </Avatar>
+          <div>
+            <Typography.Text className='text-lg font-medium'>
+              {t('个人信息')}
+            </Typography.Text>
+            <div className='text-xs text-gray-600'>
+              {t('账号基础资料和联系方式')}
+            </div>
           </div>
+        </div>
+
+        <div className='flex flex-wrap gap-2'>
+          {phoneVerificationEnabled && (
+            <Button
+              type='primary'
+              theme='outline'
+              size='small'
+              icon={<Phone size={14} />}
+              onClick={onChangePhone}
+            >
+              {user?.phone_number ? t('修改手机号') : t('绑定手机号')}
+            </Button>
+          )}
+          <Button
+            type='primary'
+            theme='outline'
+            size='small'
+            icon={<Lock size={14} />}
+            onClick={onChangePassword}
+          >
+            {t('修改密码')}
+          </Button>
         </div>
       </div>
 

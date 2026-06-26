@@ -53,6 +53,21 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
 				return
 			}
+			if shouldSelectChannel {
+				if modelRequest.Model == "" {
+					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
+					return
+				}
+				selected, selectionErr := service.IsUserSelectedModel(c.GetInt("id"), modelRequest.Model)
+				if selectionErr != nil {
+					abortWithOpenAiMessage(c, http.StatusInternalServerError, selectionErr.Error())
+					return
+				}
+				if !selected {
+					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
+					return
+				}
+			}
 		} else {
 			// Select a channel for the user
 			// check token model mapping
@@ -79,6 +94,15 @@ func Distribute() func(c *gin.Context) {
 			if shouldSelectChannel {
 				if modelRequest.Model == "" {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
+					return
+				}
+				selected, selectionErr := service.IsUserSelectedModel(c.GetInt("id"), modelRequest.Model)
+				if selectionErr != nil {
+					abortWithOpenAiMessage(c, http.StatusInternalServerError, selectionErr.Error())
+					return
+				}
+				if !selected {
+					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorTokenModelForbidden, map[string]any{"Model": modelRequest.Model}))
 					return
 				}
 				var selectGroup string

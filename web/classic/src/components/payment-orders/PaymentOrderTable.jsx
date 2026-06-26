@@ -21,10 +21,9 @@ import React, { useMemo } from 'react';
 import { Button, Space, Table, Tag, Typography } from '@douyinfe/semi-ui';
 import { timestamp2string } from '../../helpers';
 import PaymentOrderStatusTag from './PaymentOrderStatusTag';
+import { formatPaymentOrderMoney } from './paymentOrderMoney';
 
 const { Text } = Typography;
-
-const formatMoney = (value) => `¥${Number(value || 0).toFixed(2)}`;
 
 const PaymentOrderTable = ({
   orders,
@@ -60,7 +59,10 @@ const PaymentOrderTable = ({
         dataIndex: 'order_type',
         width: 110,
         render: (value) => (
-          <Tag color={value === 'subscription' ? 'purple' : 'blue'} shape='circle'>
+          <Tag
+            color={value === 'subscription' ? 'purple' : 'blue'}
+            shape='circle'
+          >
             {t(value === 'subscription' ? '订阅订单' : '充值订单')}
           </Tag>
         ),
@@ -75,7 +77,7 @@ const PaymentOrderTable = ({
         title: t('金额'),
         dataIndex: 'pay_amount',
         width: 110,
-        render: formatMoney,
+        render: (value, record) => formatPaymentOrderMoney(value, record),
       },
       {
         title: t('状态'),
@@ -99,17 +101,29 @@ const PaymentOrderTable = ({
               {t('详情')}
             </Button>
             {record.status === 'PENDING' && (
-              <Button size='small' type='warning' onClick={() => onCancel(record)}>
+              <Button
+                size='small'
+                type='warning'
+                onClick={() => onCancel(record)}
+              >
                 {t('取消')}
               </Button>
             )}
             {admin && ['PENDING', 'FAILED'].includes(record.status) && (
-              <Button size='small' type='primary' onClick={() => onRetry(record)}>
+              <Button
+                size='small'
+                type='primary'
+                onClick={() => onRetry(record)}
+              >
                 {t('补发')}
               </Button>
             )}
             {['COMPLETED', 'REFUND_REQUESTED'].includes(record.status) && (
-              <Button size='small' type='danger' onClick={() => onRefund(record)}>
+              <Button
+                size='small'
+                type='danger'
+                onClick={() => onRefund(record)}
+              >
                 {admin ? t('退款') : t('申请退款')}
               </Button>
             )}

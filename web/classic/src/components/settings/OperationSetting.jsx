@@ -92,6 +92,8 @@ const OperationSetting = () => {
     'checkin_setting.max_quota': 10000,
     'weekly_quota_setting.enabled': false,
     'weekly_quota_setting.amount': 0,
+    'weekly_quota_setting.plan_id': 0,
+    'weekly_quota_setting.period_days': 7,
 
     /* 令牌设置 */
     'token_setting.max_user_tokens': 1000,

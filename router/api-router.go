@@ -54,6 +54,11 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 
+		gpInternalRoute := apiRouter.Group("/gp/internal")
+		{
+			gpInternalRoute.GET("/entitlement/:user_id", controller.GetGpInternalEntitlement)
+		}
+
 		apiRouter.POST("/stripe/webhook", controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
@@ -61,6 +66,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/alipay/notify", controller.AlipayNotify)
 		apiRouter.GET("/alipay/return", controller.AlipayReturn)
 		apiRouter.POST("/alipay/return", controller.AlipayReturn)
+		apiRouter.POST("/casdoor/payment/webhook", controller.CasdoorPaymentWebhook)
 		// :env separates test vs prod URLs so the operator can register each
 		// in Pancake's matching webhook slot; handler enforces env match.
 		apiRouter.POST("/waffo-pancake/webhook/:env", controller.WaffoPancakeWebhook)
@@ -124,6 +130,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/self/groups", controller.GetUserGroups)
 				selfRoute.GET("/self", controller.GetSelf)
 				selfRoute.GET("/models", controller.GetUserModels)
+				selfRoute.GET("/model_selections", controller.GetUserModelSelections)
+				selfRoute.PUT("/model_selections", controller.UpdateUserModelSelections)
 				selfRoute.POST("/self/phone/verification", middleware.CriticalRateLimit(), controller.SendSelfPhoneVerification)
 				selfRoute.PUT("/self", controller.UpdateSelf)
 				selfRoute.DELETE("/self", controller.DeleteSelf)
@@ -147,6 +155,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/wechat-pay/pay", middleware.CriticalRateLimit(), controller.RequestWechatPay)
 				selfRoute.POST("/alipay/amount", controller.RequestAlipayAmount)
 				selfRoute.POST("/alipay/pay", middleware.CriticalRateLimit(), controller.RequestAlipay)
+				selfRoute.POST("/casdoor/amount", controller.RequestCasdoorAmount)
+				selfRoute.POST("/casdoor/pay", middleware.CriticalRateLimit(), controller.RequestCasdoorPay)
 				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.RequestCreemPay)
 				selfRoute.POST("/waffo/amount", controller.RequestWaffoAmount)
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPay)
@@ -185,6 +195,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.GET("/affiliates/invites", controller.GetAffiliateInviteRecords)
 				adminRoute.POST("/affiliates/invites", controller.CreateAffiliateInviteRelation)
+				adminRoute.GET("/affiliates/inviters", controller.GetAffiliateInviterRecords)
 				adminRoute.GET("/affiliates/rebates", controller.GetAffiliateRebateRecords)
 				adminRoute.GET("/affiliates/transfers", controller.GetAffiliateTransferRecords)
 				adminRoute.GET("/affiliates/withdrawals", controller.GetAffiliateWithdrawalRecords)
@@ -196,6 +207,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/affiliates/users/lookup", controller.LookupAffiliateUsers)
 				adminRoute.POST("/affiliates/users/batch-rate", controller.BatchSetAffiliateRate)
 				adminRoute.GET("/affiliates/users/:id/overview", controller.GetAffiliateUserOverview)
+				adminRoute.GET("/affiliates/users/:id/invitees", controller.GetAffiliateInviteeDetails)
 				adminRoute.PUT("/affiliates/users/:id", controller.UpdateAffiliateUserSettings)
 				adminRoute.DELETE("/affiliates/users/:id", controller.ClearAffiliateUserSettings)
 				adminRoute.GET("/affiliates/identity-config", controller.GetAffiliateIdentityConfig)
@@ -230,6 +242,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
 			subscriptionRoute.POST("/wechat-pay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestWechatPay)
 			subscriptionRoute.POST("/alipay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestAlipay)
+			subscriptionRoute.POST("/casdoor/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCasdoorPay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)
 			subscriptionRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestWaffoPancakePay)
 		}
@@ -238,6 +251,7 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			subscriptionAdminRoute.GET("/plans", controller.AdminListSubscriptionPlans)
 			subscriptionAdminRoute.POST("/plans", controller.AdminCreateSubscriptionPlan)
+			subscriptionAdminRoute.GET("/plans/:id/subscriptions", controller.AdminListPlanUserSubscriptions)
 			subscriptionAdminRoute.PUT("/plans/:id", controller.AdminUpdateSubscriptionPlan)
 			subscriptionAdminRoute.PATCH("/plans/:id", controller.AdminUpdateSubscriptionPlanStatus)
 			subscriptionAdminRoute.POST("/bind", controller.AdminBindSubscription)
@@ -245,6 +259,7 @@ func SetApiRouter(router *gin.Engine) {
 			// User subscription management (admin)
 			subscriptionAdminRoute.GET("/users/:id/subscriptions", controller.AdminListUserSubscriptions)
 			subscriptionAdminRoute.POST("/users/:id/subscriptions", controller.AdminCreateUserSubscription)
+			subscriptionAdminRoute.PUT("/user_subscriptions/:id", controller.AdminUpdateUserSubscription)
 			subscriptionAdminRoute.POST("/user_subscriptions/:id/invalidate", controller.AdminInvalidateUserSubscription)
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
 		}

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { type Row } from '@tanstack/react-table'
-import { MoreHorizontal, Pencil, Power, PowerOff } from 'lucide-react'
+import { MoreHorizontal, Pencil, Power, PowerOff, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import {
@@ -45,6 +45,15 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
         <MoreHorizontal className='h-4 w-4' />
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end'>
+        <DropdownMenuItem
+          onClick={() => {
+            setCurrentRow(row.original)
+            setOpen('plan-subscriptions')
+          }}
+        >
+          <Users className='mr-2 h-4 w-4' />
+          {t('Purchased Users')}
+        </DropdownMenuItem>
         <DropdownMenuItem
           disabled={!complianceConfirmed}
           onClick={() => {

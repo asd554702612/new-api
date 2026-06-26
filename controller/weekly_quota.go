@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
@@ -28,17 +27,12 @@ func ClaimWeeklyQuota(c *gin.Context) {
 		return
 	}
 
-	model.RecordLog(userId, model.LogTypeSystem, fmt.Sprintf("用户领取周额度，获得额度 %s", logger.LogQuota(claim.QuotaAwarded)))
-
-	var user model.User
-	newQuota := 0
-	if err := model.DB.Select("quota").Where("id = ?", userId).First(&user).Error; err == nil {
-		newQuota = user.Quota
-	}
+	model.RecordLog(userId, model.LogTypeSystem, fmt.Sprintf("用户领取套餐，套餐 ID %d，订阅 ID %d", claim.PlanId, claim.UserSubscriptionId))
 
 	common.ApiSuccess(c, gin.H{
 		"quota_awarded":     claim.QuotaAwarded,
-		"new_quota":         newQuota,
+		"subscription_id":   claim.UserSubscriptionId,
+		"plan_id":           claim.PlanId,
 		"claimed_at":        claim.CreatedAt,
 		"window_started_at": claim.WindowStart,
 		"window_ends_at":    claim.WindowEnd,

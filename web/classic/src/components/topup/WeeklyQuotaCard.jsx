@@ -37,15 +37,18 @@ import {
   showSuccess,
   timestamp2string,
 } from '../../helpers';
+import {
+  formatSubscriptionDuration,
+  formatSubscriptionResetPeriod,
+} from '../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
 
 const WeeklyQuotaCard = ({
   t,
-  userState,
-  userDispatch,
   turnstileEnabled,
   turnstileSiteKey,
+  reloadSubscriptionSelf,
 }) => {
   const [loading, setLoading] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -62,11 +65,11 @@ const WeeklyQuotaCard = ({
         setStatus(data);
       } else {
         setStatus(null);
-        showError(message || t('获取周额度领取状态失败'));
+        showError(message || t('获取领取套餐状态失败'));
       }
     } catch (error) {
       setStatus(null);
-      showError(t('获取周额度领取状态失败'));
+      showError(t('获取领取套餐状态失败'));
     } finally {
       setLoading(false);
     }
@@ -91,20 +94,10 @@ const WeeklyQuotaCard = ({
       const res = await postClaim(token);
       const { success, data, message } = res.data;
       if (success) {
-        showSuccess(
-          t('周额度领取成功，获得') + ' ' + renderQuota(data.quota_awarded),
-        );
-        if (userState?.user && typeof data.new_quota === 'number') {
-          userDispatch({
-            type: 'login',
-            payload: {
-              ...userState.user,
-              quota: data.new_quota,
-            },
-          });
-        }
+        showSuccess(t('领取套餐成功'));
         setTurnstileModalVisible(false);
         fetchStatus();
+        reloadSubscriptionSelf?.();
       } else {
         if (!token && shouldTriggerTurnstile(message)) {
           if (!turnstileSiteKey) {
@@ -117,10 +110,10 @@ const WeeklyQuotaCard = ({
         if (token && shouldTriggerTurnstile(message)) {
           setTurnstileWidgetKey((v) => v + 1);
         }
-        showError(message || t('周额度领取失败'));
+        showError(message || t('领取套餐失败'));
       }
     } catch (error) {
-      showError(t('周额度领取失败'));
+      showError(t('领取套餐失败'));
     } finally {
       setClaiming(false);
     }
@@ -138,6 +131,8 @@ const WeeklyQuotaCard = ({
         return { text: t('已领取'), color: 'blue' };
       case 'phone_required':
         return { text: t('需绑定手机号'), color: 'orange' };
+      case 'active_subscription':
+        return { text: t('套餐有效中'), color: 'purple' };
       default:
         return { text: t('未启用'), color: 'grey' };
     }
@@ -158,6 +153,15 @@ const WeeklyQuotaCard = ({
       : '-';
   const isClaimable = status?.status === 'claimable';
   const isPhoneRequired = status?.status === 'phone_required';
+  const isActiveSubscription = status?.status === 'active_subscription';
+  const plan = status?.plan || {};
+  const planTitle = plan?.title || t('未配置套餐');
+  const planQuota =
+    Number(plan?.total_amount || 0) > 0
+      ? renderQuota(plan.total_amount)
+      : t('无限额度');
+  const planDuration = plan?.id ? formatSubscriptionDuration(plan, t) : '-';
+  const resetPeriod = plan?.id ? formatSubscriptionResetPeriod(plan, t) : '-';
 
   return (
     <Card className='!rounded-xl w-full'>
@@ -193,11 +197,13 @@ const WeeklyQuotaCard = ({
             </Avatar>
             <div>
               <Typography.Text className='text-lg font-medium'>
-                {t('周额度领取')}
+                {t('领取套餐')}
               </Typography.Text>
               <div>
                 <Text type='tertiary' size='small'>
-                  {t('每 7 天可领取一次固定额度奖励')}
+                  {t('每 {{days}} 天可领取一次指定订阅套餐', {
+                    days: status?.period_days || 7,
+                  })}
                 </Text>
               </div>
             </div>
@@ -209,20 +215,21 @@ const WeeklyQuotaCard = ({
           <div className='rounded-lg border border-[var(--semi-color-border)] p-3'>
             <Space spacing={8}>
               <Gift size={16} />
-              <Text type='secondary'>{t('本次可领取')}</Text>
+              <Text type='secondary'>{t('可领取套餐')}</Text>
             </Space>
-            <div className='mt-2 text-lg font-semibold'>
-              {renderQuota(status?.amount || 0)}
+            <div className='mt-2 text-lg font-semibold'>{planTitle}</div>
+            <div className='mt-1 text-xs text-[var(--semi-color-text-2)]'>
+              {t('有效期')}: {planDuration}
             </div>
           </div>
           <div className='rounded-lg border border-[var(--semi-color-border)] p-3'>
             <Space spacing={8}>
               <CheckCircle size={16} />
-              <Text type='secondary'>{t('累计领取')}</Text>
+              <Text type='secondary'>{t('套餐额度')}</Text>
             </Space>
-            <div className='mt-2 text-sm font-medium'>
-              {t('次数')} {status?.total_claim_count || 0} ·{' '}
-              {renderQuota(status?.total_claim_quota || 0)}
+            <div className='mt-2 text-sm font-medium'>{planQuota}</div>
+            <div className='mt-1 text-xs text-[var(--semi-color-text-2)]'>
+              {t('额度重置')}: {resetPeriod}
             </div>
           </div>
           <div className='rounded-lg border border-[var(--semi-color-border)] p-3 sm:col-span-2'>
@@ -238,6 +245,15 @@ const WeeklyQuotaCard = ({
               <Text type='secondary'>{t('下次可领取')}</Text>
             </Space>
             <div className='mt-2 text-sm'>{nextClaimAt}</div>
+          </div>
+          <div className='rounded-lg border border-[var(--semi-color-border)] p-3 sm:col-span-2'>
+            <Space spacing={8}>
+              <CheckCircle size={16} />
+              <Text type='secondary'>{t('累计领取')}</Text>
+            </Space>
+            <div className='mt-2 text-sm font-medium'>
+              {t('次数')} {status?.total_claim_count || 0}
+            </div>
           </div>
         </div>
 
@@ -259,7 +275,11 @@ const WeeklyQuotaCard = ({
               disabled={!isClaimable}
               onClick={() => claimWeeklyQuota()}
             >
-              {isClaimable ? t('领取周额度') : t('本周期已领取')}
+              {isClaimable
+                ? t('领取套餐')
+                : isActiveSubscription
+                  ? t('套餐有效中')
+                  : t('本周期已领取')}
             </Button>
           )}
         </div>

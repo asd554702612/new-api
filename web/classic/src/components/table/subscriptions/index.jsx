@@ -24,6 +24,7 @@ import SubscriptionsTable from './SubscriptionsTable';
 import SubscriptionsActions from './SubscriptionsActions';
 import SubscriptionsDescription from './SubscriptionsDescription';
 import AddEditSubscriptionModal from './modals/AddEditSubscriptionModal';
+import PlanSubscriptionsModal from './modals/PlanSubscriptionsModal';
 import { useSubscriptionsData } from '../../../hooks/subscriptions/useSubscriptionsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
@@ -36,6 +37,9 @@ const SubscriptionsPage = () => {
   const [statusState] = useContext(StatusContext);
   const enableEpay = !!statusState?.status?.enable_online_topup;
   const [complianceConfirmed, setComplianceConfirmed] = useState(true);
+  const [planSubscriptionsVisible, setPlanSubscriptionsVisible] =
+    useState(false);
+  const [planSubscriptionsRecord, setPlanSubscriptionsRecord] = useState(null);
 
   const {
     showEdit,
@@ -48,6 +52,16 @@ const SubscriptionsPage = () => {
     setCompactMode,
     t,
   } = subscriptionsData;
+
+  const openPlanSubscriptions = (planRecord) => {
+    setPlanSubscriptionsRecord(planRecord);
+    setPlanSubscriptionsVisible(true);
+  };
+
+  const closePlanSubscriptions = () => {
+    setPlanSubscriptionsVisible(false);
+    setPlanSubscriptionsRecord(null);
+  };
 
   useEffect(() => {
     const loadComplianceStatus = async () => {
@@ -73,6 +87,12 @@ const SubscriptionsPage = () => {
         editingPlan={editingPlan}
         placement={sheetPlacement}
         refresh={refresh}
+        t={t}
+      />
+      <PlanSubscriptionsModal
+        visible={planSubscriptionsVisible}
+        onCancel={closePlanSubscriptions}
+        planRecord={planSubscriptionsRecord}
         t={t}
       />
 
@@ -130,6 +150,7 @@ const SubscriptionsPage = () => {
           {...subscriptionsData}
           enableEpay={enableEpay}
           complianceConfirmed={complianceConfirmed}
+          openPlanSubscriptions={openPlanSubscriptions}
         />
       </CardPro>
     </>

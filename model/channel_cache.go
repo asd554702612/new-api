@@ -17,6 +17,8 @@ import (
 
 var group2model2channels map[string]map[string][]int // enabled channel
 var channelsIDM map[int]*Channel                     // all channels include disabled
+var enabledModelsByGroup map[string][]string
+var enabledModels []string
 var channelSyncLock sync.RWMutex
 
 func InitChannelCache() {
@@ -35,6 +37,7 @@ func InitChannelCache() {
 	for _, ability := range abilities {
 		groups[ability.Group] = true
 	}
+	newEnabledModelsByGroup, newEnabledModels := buildEnabledModelSnapshots(abilities)
 	newGroup2model2channels := make(map[string]map[string][]int)
 	for group := range groups {
 		newGroup2model2channels[group] = make(map[string][]int)
@@ -67,6 +70,8 @@ func InitChannelCache() {
 
 	channelSyncLock.Lock()
 	group2model2channels = newGroup2model2channels
+	enabledModelsByGroup = newEnabledModelsByGroup
+	enabledModels = newEnabledModels
 	//channelsIDM = newChannelId2channel
 	for i, channel := range newChannelId2channel {
 		if channel.ChannelInfo.IsMultiKey {
@@ -84,6 +89,62 @@ func InitChannelCache() {
 	channelsIDM = newChannelId2channel
 	channelSyncLock.Unlock()
 	common.SysLog("channels synced from database")
+}
+
+func buildEnabledModelSnapshots(abilities []*Ability) (map[string][]string, []string) {
+	groupModelSets := make(map[string]map[string]struct{})
+	allModelSet := make(map[string]struct{})
+	for _, ability := range abilities {
+		if ability == nil || !ability.Enabled {
+			continue
+		}
+		if _, ok := groupModelSets[ability.Group]; !ok {
+			groupModelSets[ability.Group] = make(map[string]struct{})
+		}
+		groupModelSets[ability.Group][ability.Model] = struct{}{}
+		allModelSet[ability.Model] = struct{}{}
+	}
+
+	groupModels := make(map[string][]string, len(groupModelSets))
+	for group, modelSet := range groupModelSets {
+		models := make([]string, 0, len(modelSet))
+		for model := range modelSet {
+			models = append(models, model)
+		}
+		sort.Strings(models)
+		groupModels[group] = models
+	}
+
+	allModels := make([]string, 0, len(allModelSet))
+	for model := range allModelSet {
+		allModels = append(allModels, model)
+	}
+	sort.Strings(allModels)
+	return groupModels, allModels
+}
+
+func getGroupEnabledModelsFromCache(group string) ([]string, bool) {
+	if !common.MemoryCacheEnabled {
+		return nil, false
+	}
+	channelSyncLock.RLock()
+	defer channelSyncLock.RUnlock()
+	if enabledModelsByGroup == nil {
+		return nil, false
+	}
+	return append([]string(nil), enabledModelsByGroup[group]...), true
+}
+
+func getEnabledModelsFromCache() ([]string, bool) {
+	if !common.MemoryCacheEnabled {
+		return nil, false
+	}
+	channelSyncLock.RLock()
+	defer channelSyncLock.RUnlock()
+	if enabledModels == nil {
+		return nil, false
+	}
+	return append([]string(nil), enabledModels...), true
 }
 
 func SyncChannelCache(frequency int) {

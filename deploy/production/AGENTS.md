@@ -6,15 +6,21 @@ This directory contains production deployment configuration for `new-api`.
 
 - Treat every file in this directory as production-impacting.
 - Do not add PostgreSQL, MySQL, or Redis services to `docker-compose.yml`.
-- Production `NEW_API_IMAGE` must use an immutable tag in the format `new-api:prod-YYYYMMDD-<git-short-sha>-amd64`; do not use `latest` or `local` in production.
+- Production images must be pushed to both Docker Hub `asd494235908/new-api` and Aliyun `registry.cn-chengdu.aliyuncs.com/slef/new-api`.
+- Both image registries must use the same immutable tag, for example `prod-YYYYMMDD-<git-short-sha>-<timestamp>-amd64`; do not use `latest` or `local` in production.
+- Before deployment, confirm both Docker Hub and Aliyun image manifests exist and include the `linux/amd64` platform.
+- Production deployment targets are server A `82.156.54.174` and server B `43.160.242.244`.
+- Deploy `new-api` to both server A and server B unless the operator explicitly requests a single-server deployment.
 - Do not modify `/opt/services/sub2api/`.
-- Do not stop, restart, or recreate `sub2api`, `sub2api-postgres`, or `sub2api-redis`.
+- On both production servers, only `new-api` may be recreated or restarted during deployment.
+- Do not stop, restart, or recreate `sub2api`, `sub2api-postgres`, `sub2api-redis`, or any non-`new-api` container.
 - Do not change existing `sub2api` containers, env files, data volumes, or Docker networks unless explicitly instructed by the operator.
 - On `43.160.242.244`, connect to existing PostgreSQL and Redis through `host.docker.internal` mapped to Docker `host-gateway`; do not assume Docker service DNS names resolve.
 
 ## PostgreSQL Rules
 
-- `new-api` must connect to the isolated `new_api` database.
+- Server A and server B `new-api` must both connect to server A's isolated `new_api` database.
+- Server B must not use its local `new_api` database as the formal production database.
 - Never point `SQL_DSN` at the `sub2api` database.
 - Create a dedicated `new_api` PostgreSQL user for `new-api`.
 - Grant the `new_api` user access only to the `new_api` database.
@@ -43,6 +49,7 @@ Before deployment:
 - Confirm port `3000` is not already listening.
 - Confirm `SQL_DSN` points to `new_api`, not `sub2api`.
 - Confirm `REDIS_CONN_STRING` ends with `/1`.
+- Confirm `MODEL_SQUARE_ENVIRONMENT` is explicitly set to `overseas` for overseas production or `domestic` for domestic production.
 
 After deployment:
 

@@ -30,7 +30,7 @@ import {
   Tooltip,
 } from '@douyinfe/semi-ui';
 import { renderQuota } from '../../../helpers';
-import { convertUSDToCurrency } from '../../../helpers/render';
+import { formatSubscriptionPrice } from '../../../helpers/subscriptionFormat';
 
 const { Text } = Typography;
 
@@ -79,7 +79,7 @@ const renderPlanTitle = (text, record, t) => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <Text type='tertiary'>{t('价格')}</Text>
         <Text strong style={{ color: 'var(--semi-color-success)' }}>
-          {convertUSDToCurrency(Number(plan?.price_amount || 0), 2)}
+          {formatSubscriptionPrice(plan, 2)}
         </Text>
         <Text type='tertiary'>{t('总额度')}</Text>
         {plan?.total_amount > 0 ? (
@@ -125,10 +125,10 @@ const renderPlanTitle = (text, record, t) => {
   );
 };
 
-const renderPrice = (text) => {
+const renderPrice = (text, record) => {
   return (
     <Text strong style={{ color: 'var(--semi-color-success)' }}>
-      {convertUSDToCurrency(Number(text || 0), 2)}
+      {formatSubscriptionPrice(record?.plan || { price_amount: text }, 2)}
     </Text>
   );
 };
@@ -139,6 +139,41 @@ const renderPurchaseLimit = (text, record, t) => {
     <Text type={limit > 0 ? 'secondary' : 'tertiary'}>
       {limit > 0 ? limit : t('不限')}
     </Text>
+  );
+};
+
+const renderSaleControls = (text, record, t) => {
+  const plan = record?.plan || {};
+  const tags = [];
+  if (Number(plan.daily_purchase_limit || 0) > 0) {
+    tags.push(`${t('每日')} ${plan.daily_purchase_limit}`);
+  }
+  if (plan.purchase_once_per_active_subscription) {
+    tags.push(t('有效期内限购一次'));
+  }
+  if (
+    Number(plan.sale_starts_at || 0) > 0 ||
+    Number(plan.sale_ends_at || 0) > 0
+  ) {
+    tags.push(t('自动上下架'));
+  }
+  if (plan.daily_sale_starts_at && plan.daily_sale_ends_at) {
+    tags.push(`${plan.daily_sale_starts_at}-${plan.daily_sale_ends_at}`);
+  }
+  if (plan.weekly_sale_days && plan.weekly_sale_days !== '[]') {
+    tags.push(t('每周上架'));
+  }
+  if (tags.length === 0) {
+    return <Text type='tertiary'>{t('不限')}</Text>;
+  }
+  return (
+    <Space spacing={4} wrap>
+      {tags.map((tag) => (
+        <Tag key={tag} color='amber' shape='circle'>
+          {tag}
+        </Tag>
+      ))}
+    </Space>
   );
 };
 
@@ -231,7 +266,7 @@ const renderPaymentConfig = (text, record, t, enableEpay) => {
 const renderOperations = (
   text,
   record,
-  { openEdit, setPlanEnabled, t, complianceConfirmed },
+  { openEdit, openPlanSubscriptions, setPlanEnabled, t, complianceConfirmed },
 ) => {
   const isEnabled = record?.plan?.enabled;
 
@@ -255,6 +290,14 @@ const renderOperations = (
 
   return (
     <Space spacing={8}>
+      <Button
+        theme='light'
+        type='secondary'
+        size='small'
+        onClick={() => openPlanSubscriptions(record)}
+      >
+        {t('购买用户')}
+      </Button>
       <Button
         theme='light'
         type='tertiary'
@@ -292,6 +335,7 @@ const renderOperations = (
 export const getSubscriptionsColumns = ({
   t,
   openEdit,
+  openPlanSubscriptions,
   setPlanEnabled,
   enableEpay,
   complianceConfirmed = true,
@@ -313,12 +357,17 @@ export const getSubscriptionsColumns = ({
       title: t('价格'),
       dataIndex: ['plan', 'price_amount'],
       width: 100,
-      render: (text) => renderPrice(text),
+      render: (text, record) => renderPrice(text, record),
     },
     {
       title: t('购买上限'),
       width: 90,
       render: (text, record) => renderPurchaseLimit(text, record, t),
+    },
+    {
+      title: t('售卖限制'),
+      width: 180,
+      render: (text, record) => renderSaleControls(text, record, t),
     },
     {
       title: t('优先级'),
@@ -362,10 +411,11 @@ export const getSubscriptionsColumns = ({
       title: t('操作'),
       dataIndex: 'operate',
       fixed: 'right',
-      width: 160,
+      width: 250,
       render: (text, record) =>
         renderOperations(text, record, {
           openEdit,
+          openPlanSubscriptions,
           setPlanEnabled,
           t,
           complianceConfirmed,

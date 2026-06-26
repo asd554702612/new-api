@@ -46,6 +46,7 @@ type WechatPayOrderRequest struct {
 
 type WechatPayOrderResponse struct {
 	TradeType   string         `json:"trade_type"`
+	TradeNo     string         `json:"trade_no,omitempty"`
 	CodeURL     string         `json:"code_url,omitempty"`
 	CheckoutURL string         `json:"checkout_url,omitempty"`
 	JSAPIParams map[string]any `json:"jsapi_params,omitempty"`
@@ -69,6 +70,7 @@ type AlipayOrderRequest struct {
 
 type AlipayOrderResponse struct {
 	TradeType   string `json:"trade_type"`
+	TradeNo     string `json:"trade_no,omitempty"`
 	CheckoutURL string `json:"checkout_url,omitempty"`
 	QRCode      string `json:"qr_code,omitempty"`
 }

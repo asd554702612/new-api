@@ -10,7 +10,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -42,27 +44,39 @@ type tokenKeyResponse struct {
 	Key string `json:"key"`
 }
 
+type tokenUsageResponse struct {
+	Code    bool   `json:"code"`
+	Message string `json:"message"`
+	Data    struct {
+		TotalGranted   int     `json:"total_granted"`
+		TotalUsed      int     `json:"total_used"`
+		TotalAvailable int     `json:"total_available"`
+		UnlimitedQuota bool    `json:"unlimited_quota"`
+		QuotaPerUnit   float64 `json:"quota_per_unit"`
+	} `json:"data"`
+}
+
 type sqliteColumnInfo struct {
 	Name string `gorm:"column:name"`
 	Type string `gorm:"column:type"`
 }
 
 type legacyToken struct {
-	Id                 int            `gorm:"primaryKey"`
-	UserId             int            `gorm:"index"`
-	Key                string         `gorm:"column:key;type:char(48);uniqueIndex"`
-	Status             int            `gorm:"default:1"`
-	Name               string         `gorm:"index"`
-	CreatedTime        int64          `gorm:"bigint"`
-	AccessedTime       int64          `gorm:"bigint"`
-	ExpiredTime        int64          `gorm:"bigint;default:-1"`
-	RemainQuota        int            `gorm:"default:0"`
+	Id                 int    `gorm:"primaryKey"`
+	UserId             int    `gorm:"index"`
+	Key                string `gorm:"column:key;type:char(48);uniqueIndex"`
+	Status             int    `gorm:"default:1"`
+	Name               string `gorm:"index"`
+	CreatedTime        int64  `gorm:"bigint"`
+	AccessedTime       int64  `gorm:"bigint"`
+	ExpiredTime        int64  `gorm:"bigint;default:-1"`
+	RemainQuota        int    `gorm:"default:0"`
 	UnlimitedQuota     bool
 	ModelLimitsEnabled bool
-	ModelLimits        string         `gorm:"type:text"`
-	AllowIps           *string        `gorm:"default:''"`
-	UsedQuota          int            `gorm:"default:0"`
-	Group              string         `gorm:"column:group;default:''"`
+	ModelLimits        string  `gorm:"type:text"`
+	AllowIps           *string `gorm:"default:''"`
+	UsedQuota          int     `gorm:"default:0"`
+	Group              string  `gorm:"column:group;default:''"`
 	CrossGroupRetry    bool
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
@@ -112,6 +126,41 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	db := openTokenControllerTestDB(t)
 	migrateTokenControllerTestDB(t, db)
 	return db
+}
+
+func setupTokenUsageControllerTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	gin.SetMode(gin.TestMode)
+	common.RedisEnabled = false
+	common.UsingSQLite = false
+	common.UsingMySQL = false
+	common.UsingPostgreSQL = false
+	previousIsMasterNode := common.IsMasterNode
+	common.IsMasterNode = true
+
+	t.Setenv("SQL_DSN", "")
+	t.Setenv("LOG_SQL_DSN", "")
+	previousSQLitePath := common.SQLitePath
+	common.SQLitePath = fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	t.Cleanup(func() {
+		common.IsMasterNode = previousIsMasterNode
+		common.SQLitePath = previousSQLitePath
+	})
+
+	if err := model.InitDB(); err != nil {
+		t.Fatalf("failed to initialize token usage test db: %v", err)
+	}
+	model.LOG_DB = model.DB
+
+	t.Cleanup(func() {
+		sqlDB, err := model.DB.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+
+	return model.DB
 }
 
 func openTokenControllerExternalDB(t *testing.T, dialect string, dsn string) (*gorm.DB, *bool) {
@@ -390,6 +439,48 @@ func TestTokenMigrationFromChar48ToVarchar128Postgres(t *testing.T) {
 	runTokenMigrationCompatibilityTest(t, db, "postgres", managedTokensTable)
 }
 
+func TestGetTokenUsageReturnsQuotaPerUnitAndUnlimitedFlag(t *testing.T) {
+	db := setupTokenUsageControllerTestDB(t)
+	token := seedToken(t, db, 1, "usage-token", "usage1234token5678")
+	token.RemainQuota = 123456
+	token.UsedQuota = 654321
+	token.UnlimitedQuota = true
+	if err := db.Save(token).Error; err != nil {
+		t.Fatalf("failed to update token usage fixture: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/usage/token/", nil, 1)
+	ctx.Request.Header.Set("Authorization", "Bearer "+token.GetFullKey())
+	GetTokenUsage(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	var response tokenUsageResponse
+	if err := common.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode token usage response: %v", err)
+	}
+	if !response.Code {
+		t.Fatalf("expected successful usage response, got message: %s", response.Message)
+	}
+	if response.Data.TotalAvailable != token.RemainQuota {
+		t.Fatalf("expected total_available %d, got %d", token.RemainQuota, response.Data.TotalAvailable)
+	}
+	if response.Data.TotalUsed != token.UsedQuota {
+		t.Fatalf("expected total_used %d, got %d", token.UsedQuota, response.Data.TotalUsed)
+	}
+	if response.Data.TotalGranted != token.RemainQuota+token.UsedQuota {
+		t.Fatalf("expected total_granted %d, got %d", token.RemainQuota+token.UsedQuota, response.Data.TotalGranted)
+	}
+	if !response.Data.UnlimitedQuota {
+		t.Fatalf("expected unlimited_quota to be preserved")
+	}
+	if response.Data.QuotaPerUnit != common.QuotaPerUnit {
+		t.Fatalf("expected quota_per_unit %v, got %v", common.QuotaPerUnit, response.Data.QuotaPerUnit)
+	}
+}
+
 func TestGetAllTokensMasksKeyInResponse(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	token := seedToken(t, db, 1, "list-token", "abcd1234efgh5678")
@@ -415,6 +506,46 @@ func TestGetAllTokensMasksKeyInResponse(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("list response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestGetAllTokensRunsPageAndCountQueriesConcurrently(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedToken(t, db, 1, "first-token", "abcd1234efgh5678")
+	seedToken(t, db, 1, "second-token", "ijkl1234mnop5678")
+
+	var active int32
+	var maxActive int32
+	callbackName := "test:observe_token_query_concurrency"
+	if err := db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table != "tokens" {
+			return
+		}
+		current := atomic.AddInt32(&active, 1)
+		for {
+			observed := atomic.LoadInt32(&maxActive)
+			if current <= observed || atomic.CompareAndSwapInt32(&maxActive, observed, current) {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+		atomic.AddInt32(&active, -1)
+	}); err != nil {
+		t.Fatalf("failed to register query callback: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Callback().Query().Remove(callbackName)
+	})
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/?p=1&size=10", nil, 1)
+	GetAllTokens(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+	if atomic.LoadInt32(&maxActive) < 2 {
+		t.Fatalf("expected token list and count queries to overlap")
 	}
 }
 

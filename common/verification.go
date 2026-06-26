@@ -33,9 +33,13 @@ func GenerateVerificationCode(length int) string {
 }
 
 func RegisterVerificationCodeWithKey(key string, code string, purpose string) {
+	cacheKey := verificationCacheKey(key, purpose)
+	if RedisEnabled && RDB != nil {
+		_ = RedisSet(cacheKey, code, time.Duration(VerificationValidMinutes)*time.Minute)
+	}
 	verificationMutex.Lock()
 	defer verificationMutex.Unlock()
-	verificationMap[purpose+key] = verificationValue{
+	verificationMap[cacheKey] = verificationValue{
 		code: code,
 		time: time.Now(),
 	}
@@ -45,9 +49,21 @@ func RegisterVerificationCodeWithKey(key string, code string, purpose string) {
 }
 
 func VerifyCodeWithKey(key string, code string, purpose string) bool {
+	cacheKey := verificationCacheKey(key, purpose)
+	if RedisEnabled && RDB != nil {
+		value, err := RedisGet(cacheKey)
+		if err == nil {
+			if value != code {
+				return false
+			}
+			_ = RedisDel(cacheKey)
+			deleteVerificationCodeFromMemory(cacheKey)
+			return true
+		}
+	}
 	verificationMutex.Lock()
 	defer verificationMutex.Unlock()
-	value, okay := verificationMap[purpose+key]
+	value, okay := verificationMap[cacheKey]
 	now := time.Now()
 	if !okay || int(now.Sub(value.time).Seconds()) >= VerificationValidMinutes*60 {
 		return false
@@ -56,9 +72,21 @@ func VerifyCodeWithKey(key string, code string, purpose string) bool {
 }
 
 func DeleteKey(key string, purpose string) {
+	cacheKey := verificationCacheKey(key, purpose)
+	if RedisEnabled && RDB != nil {
+		_ = RedisDel(cacheKey)
+	}
+	deleteVerificationCodeFromMemory(cacheKey)
+}
+
+func deleteVerificationCodeFromMemory(cacheKey string) {
 	verificationMutex.Lock()
 	defer verificationMutex.Unlock()
-	delete(verificationMap, purpose+key)
+	delete(verificationMap, cacheKey)
+}
+
+func verificationCacheKey(key string, purpose string) string {
+	return "verification:" + purpose + ":" + key
 }
 
 // no lock inside, so the caller must lock the verificationMap before calling!

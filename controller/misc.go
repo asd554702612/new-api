@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -58,12 +57,19 @@ func GetStatus(c *gin.Context) {
 
 	passkeySetting := system_setting.GetPasskeySettings()
 	legalSetting := system_setting.GetLegalSettings()
+	headerNavModules, sidebarModulesAdmin := getStatusMenuModulesForEnvironment(
+		common.OptionMap["HeaderNavModules"],
+		common.OptionMap["SidebarModulesAdmin"],
+		system_setting.GetModelSquareSettings().Environment,
+	)
+	oidcClient, oidcOK := system_setting.GetOIDCSettings().ResolveClientForRequest(c.Request)
 
 	data := gin.H{
 		"version":                     common.Version,
 		"start_time":                  common.StartTime,
 		"email_verification":          common.EmailVerificationEnabled,
-		"phone_verification_enabled":  common.PhoneVerificationEnabled,
+		"phone_verification_enabled":  common.IsPhoneVerificationEnabled(),
+		"phone_verify_enabled":        common.IsPhoneVerificationEnabled(),
 		"github_oauth":                common.GitHubOAuthEnabled,
 		"github_client_id":            common.GitHubClientId,
 		"discord_oauth":               system_setting.GetDiscordSettings().Enabled,
@@ -116,12 +122,12 @@ func GetStatus(c *gin.Context) {
 		"faq_enabled":           cs.FAQEnabled,
 
 		// 模块管理配置
-		"HeaderNavModules":    common.OptionMap["HeaderNavModules"],
-		"SidebarModulesAdmin": common.OptionMap["SidebarModulesAdmin"],
+		"HeaderNavModules":    headerNavModules,
+		"SidebarModulesAdmin": sidebarModulesAdmin,
 
-		"oidc_enabled":                system_setting.GetOIDCSettings().Enabled,
-		"oidc_client_id":              system_setting.GetOIDCSettings().ClientId,
-		"oidc_authorization_endpoint": system_setting.GetOIDCSettings().AuthorizationEndpoint,
+		"oidc_enabled":                oidcOK,
+		"oidc_client_id":              oidcClient.ClientId,
+		"oidc_authorization_endpoint": oidcClient.AuthorizationEndpoint,
 		"passkey_login":               passkeySetting.Enabled,
 		"passkey_display_name":        passkeySetting.RPDisplayName,
 		"passkey_rp_id":               passkeySetting.RPID,
@@ -184,6 +190,67 @@ func GetStatus(c *gin.Context) {
 	return
 }
 
+func getStatusMenuModulesForEnvironment(headerNavModules string, sidebarModulesAdmin string, environment string) (string, string) {
+	if environment != system_setting.ModelSquareEnvironmentDomestic {
+		return headerNavModules, sidebarModulesAdmin
+	}
+
+	return hideDomesticOnlyMenusInHeaderNav(headerNavModules), hideDomesticOnlyMenusInSidebar(sidebarModulesAdmin)
+}
+
+func hideDomesticOnlyMenusInHeaderNav(raw string) string {
+	modules := map[string]any{}
+	if strings.TrimSpace(raw) != "" {
+		_ = common.UnmarshalJsonStr(raw, &modules)
+	}
+
+	rankings := map[string]any{
+		"enabled":     false,
+		"requireAuth": true,
+	}
+	if existing, ok := modules["rankings"].(map[string]any); ok {
+		rankings = existing
+		rankings["enabled"] = false
+		if _, exists := rankings["requireAuth"]; !exists {
+			rankings["requireAuth"] = true
+		}
+	}
+	modules["rankings"] = rankings
+
+	bytes, err := common.Marshal(modules)
+	if err != nil {
+		return `{"rankings":{"enabled":false,"requireAuth":true}}`
+	}
+	return string(bytes)
+}
+
+func hideDomesticOnlyMenusInSidebar(raw string) string {
+	modules := map[string]map[string]any{}
+	if strings.TrimSpace(raw) != "" {
+		_ = common.UnmarshalJsonStr(raw, &modules)
+	}
+
+	disableSidebarModules(modules, "console", "log", "rankings")
+	disableSidebarModules(modules, "admin", "ordersDashboard")
+
+	bytes, err := common.Marshal(modules)
+	if err != nil {
+		return `{"console":{"log":false,"rankings":false},"admin":{"ordersDashboard":false}}`
+	}
+	return string(bytes)
+}
+
+func disableSidebarModules(modules map[string]map[string]any, section string, keys ...string) {
+	sectionConfig := modules[section]
+	if sectionConfig == nil {
+		sectionConfig = map[string]any{}
+		modules[section] = sectionConfig
+	}
+	for _, key := range keys {
+		sectionConfig[key] = false
+	}
+}
+
 type phoneVerificationRequest struct {
 	PhoneNumber string `json:"phone_number"`
 	Purpose     string `json:"purpose"`
@@ -200,7 +267,7 @@ func SendPhoneVerification(c *gin.Context) {
 		common.ApiErrorMsg(c, "手机号格式无效")
 		return
 	}
-	if !common.PhoneVerificationEnabled {
+	if !common.IsPhoneVerificationEnabled() {
 		common.ApiErrorMsg(c, "手机验证未启用")
 		return
 	}
@@ -215,6 +282,11 @@ func SendPhoneVerification(c *gin.Context) {
 	case common.PhoneVerificationPurposeRegister:
 		if model.IsPhoneNumberAlreadyTaken(phoneNumber) {
 			common.ApiErrorMsg(c, "手机号已被使用")
+			return
+		}
+	case common.PhoneVerificationPurposePasswordReset:
+		if !model.IsPhoneNumberAlreadyTaken(phoneNumber) {
+			common.ApiSuccess(c, gin.H{"countdown": 60})
 			return
 		}
 	default:
@@ -235,7 +307,7 @@ func SendSelfPhoneVerification(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	if !common.PhoneVerificationEnabled {
+	if !common.IsPhoneVerificationEnabled() {
 		common.ApiErrorMsg(c, "手机验证未启用")
 		return
 	}
@@ -437,13 +509,27 @@ func SendPasswordResetEmail(c *gin.Context) {
 }
 
 type PasswordResetRequest struct {
-	Email string `json:"email"`
-	Token string `json:"token"`
+	Email       string `json:"email"`
+	Token       string `json:"token"`
+	PhoneNumber string `json:"phone_number"`
+	SMSCode     string `json:"sms_code"`
+	Password    string `json:"password"`
 }
 
 func ResetPassword(c *gin.Context) {
 	var req PasswordResetRequest
-	err := json.NewDecoder(c.Request.Body).Decode(&req)
+	err := common.DecodeJson(c.Request.Body, &req)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的参数",
+		})
+		return
+	}
+	if req.PhoneNumber != "" || req.SMSCode != "" || req.Password != "" {
+		resetPasswordByPhone(c, req)
+		return
+	}
 	if req.Email == "" || req.Token == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -471,4 +557,34 @@ func ResetPassword(c *gin.Context) {
 		"data":    password,
 	})
 	return
+}
+
+func resetPasswordByPhone(c *gin.Context, req PasswordResetRequest) {
+	phoneNumber := common.NormalizePhoneNumber(req.PhoneNumber, "86")
+	if phoneNumber == "" || strings.TrimSpace(req.SMSCode) == "" || req.Password == "" {
+		common.ApiErrorMsg(c, "无效的参数")
+		return
+	}
+	if len(req.Password) < 8 || len(req.Password) > 20 {
+		common.ApiErrorMsg(c, "密码长度必须为 8 到 20 位")
+		return
+	}
+	if !common.VerifyPhoneVerificationCode(phoneNumber, req.SMSCode, common.PhoneVerificationPurposePasswordReset) {
+		common.ApiErrorMsg(c, "短信验证码错误或已过期")
+		return
+	}
+	user, err := model.GetUserByPhoneNumber(phoneNumber)
+	if err != nil {
+		common.ApiErrorMsg(c, "手机号未注册")
+		return
+	}
+	if user.Status != common.UserStatusEnabled {
+		common.ApiErrorI18n(c, i18n.MsgUserDisabled)
+		return
+	}
+	if err = model.UpdateUserPasswordById(user.Id, req.Password); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, "")
 }

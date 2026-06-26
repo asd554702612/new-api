@@ -55,6 +55,7 @@ import {
   IconLink,
   IconUserGroup,
   IconEdit,
+  IconLock,
 } from '@douyinfe/semi-icons';
 import UserBindingManagementModal from './UserBindingManagementModal';
 
@@ -83,6 +84,7 @@ const EditUserModal = (props) => {
     username: '',
     display_name: '',
     password: '',
+    confirm_password: '',
     github_id: '',
     oidc_id: '',
     discord_id: '',
@@ -149,8 +151,12 @@ const EditUserModal = (props) => {
   const submit = async (values) => {
     setLoading(true);
     let payload = { ...values };
+    delete payload.confirm_password;
     delete payload.quota;
     delete payload.quota_amount;
+    if (!payload.password) {
+      delete payload.password;
+    }
     if (userId) {
       payload.id = parseInt(userId);
     }
@@ -307,16 +313,6 @@ const EditUserModal = (props) => {
 
                     <Col span={24}>
                       <Form.Input
-                        field='password'
-                        label={t('密码')}
-                        placeholder={t('请输入新的密码，最短 8 位')}
-                        mode='password'
-                        showClear
-                      />
-                    </Col>
-
-                    <Col span={24}>
-                      <Form.Input
                         field='display_name'
                         label={t('显示名称')}
                         placeholder={t('请输入新的显示名称')}
@@ -343,6 +339,82 @@ const EditUserModal = (props) => {
                     </Col>
                   </Row>
                 </Card>
+
+                {/* 密码重置 */}
+                {userId && (
+                  <Card className='!rounded-2xl shadow-sm border-0'>
+                    <div className='flex items-center mb-2'>
+                      <Avatar
+                        size='small'
+                        color='orange'
+                        className='mr-2 shadow-md'
+                      >
+                        <IconLock size={16} />
+                      </Avatar>
+                      <div>
+                        <Text className='text-lg font-medium'>
+                          {t('重置密码')}
+                        </Text>
+                        <div className='text-xs text-gray-600'>
+                          {t('留空则不修改密码')}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Row gutter={12}>
+                      <Col span={24}>
+                        <Form.Input
+                          field='password'
+                          label={t('新密码')}
+                          placeholder={t('请输入新的密码，最短 8 位')}
+                          mode='password'
+                          showClear
+                          rules={[
+                            {
+                              validator: (rule, value) => {
+                                if (!value) return Promise.resolve();
+                                if (value.length < 8 || value.length > 20) {
+                                  return Promise.reject(
+                                    t('输入密码，最短 8 位，最长 20 位'),
+                                  );
+                                }
+                                return Promise.resolve();
+                              },
+                            },
+                          ]}
+                        />
+                      </Col>
+
+                      <Col span={24}>
+                        <Form.Input
+                          field='confirm_password'
+                          label={t('确认密码')}
+                          placeholder={t('请输入确认密码')}
+                          mode='password'
+                          showClear
+                          rules={[
+                            {
+                              validator: (rule, value) => {
+                                const password =
+                                  formApiRef.current?.getValue('password');
+                                if (!password) return Promise.resolve();
+                                if (!value) {
+                                  return Promise.reject(t('请输入确认密码'));
+                                }
+                                if (value !== password) {
+                                  return Promise.reject(
+                                    t('两次输入的密码不一致'),
+                                  );
+                                }
+                                return Promise.resolve();
+                              },
+                            },
+                          ]}
+                        />
+                      </Col>
+                    </Row>
+                  </Card>
+                )}
 
                 {/* 权限设置 */}
                 {userId && (

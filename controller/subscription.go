@@ -3,6 +3,7 @@ package controller
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -15,7 +16,8 @@ import (
 // ---- Shared types ----
 
 type SubscriptionPlanDTO struct {
-	Plan model.SubscriptionPlan `json:"plan"`
+	Plan             model.SubscriptionPlan                  `json:"plan"`
+	SaleAvailability *model.SubscriptionPlanSaleAvailability `json:"sale_availability,omitempty"`
 }
 
 type BillingPreferenceRequest struct {
@@ -39,11 +41,19 @@ func GetSubscriptionPlans(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	userId := c.GetInt("id")
+	now := time.Now()
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
 		p.NormalizeDefaults()
+		availability, err := model.GetSubscriptionPlanSaleAvailability(userId, &p, now)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
+			Plan:             p,
+			SaleAvailability: availability,
 		})
 	}
 	common.ApiSuccess(c, result)
@@ -125,10 +135,13 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 		return
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
+	now := time.Now()
 	for _, p := range plans {
 		p.NormalizeDefaults()
+		availability, _ := model.GetSubscriptionPlanSaleAvailability(0, &p, now)
 		result = append(result, SubscriptionPlanDTO{
-			Plan: p,
+			Plan:             p,
+			SaleAvailability: availability,
 		})
 	}
 	common.ApiSuccess(c, result)
@@ -136,6 +149,10 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 
 type AdminUpsertSubscriptionPlanRequest struct {
 	Plan model.SubscriptionPlan `json:"plan"`
+}
+
+func subscriptionPlanCurrencyFromDisplaySetting() string {
+	return "USD"
 }
 
 func AdminCreateSubscriptionPlan(c *gin.Context) {
@@ -161,10 +178,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "价格不能超过9999")
 		return
 	}
-	if req.Plan.Currency == "" {
-		req.Plan.Currency = "USD"
-	}
-	req.Plan.Currency = "USD"
+	req.Plan.Currency = subscriptionPlanCurrencyFromDisplaySetting()
 	if req.Plan.AllowBalancePay == nil {
 		req.Plan.AllowBalancePay = common.GetPointer(true)
 	}
@@ -180,6 +194,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
+		return
+	}
+	if err := model.ValidateSubscriptionPlanSaleControls(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
@@ -231,10 +249,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return
 	}
 	req.Plan.Id = id
-	if req.Plan.Currency == "" {
-		req.Plan.Currency = "USD"
-	}
-	req.Plan.Currency = "USD"
+	req.Plan.Currency = subscriptionPlanCurrencyFromDisplaySetting()
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = model.SubscriptionDurationMonth
 	}
@@ -247,6 +262,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
+		return
+	}
+	if err := model.ValidateSubscriptionPlanSaleControls(&req.Plan); err != nil {
+		common.ApiErrorMsg(c, err.Error())
 		return
 	}
 	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
@@ -265,24 +284,31 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
-			"title":                      req.Plan.Title,
-			"subtitle":                   req.Plan.Subtitle,
-			"price_amount":               req.Plan.PriceAmount,
-			"currency":                   req.Plan.Currency,
-			"duration_unit":              req.Plan.DurationUnit,
-			"duration_value":             req.Plan.DurationValue,
-			"custom_seconds":             req.Plan.CustomSeconds,
-			"enabled":                    req.Plan.Enabled,
-			"sort_order":                 req.Plan.SortOrder,
-			"stripe_price_id":            req.Plan.StripePriceId,
-			"creem_product_id":           req.Plan.CreemProductId,
-			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
-			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
-			"total_amount":               req.Plan.TotalAmount,
-			"upgrade_group":              req.Plan.UpgradeGroup,
-			"quota_reset_period":         req.Plan.QuotaResetPeriod,
-			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
-			"updated_at":                 common.GetTimestamp(),
+			"title":                                 req.Plan.Title,
+			"subtitle":                              req.Plan.Subtitle,
+			"price_amount":                          req.Plan.PriceAmount,
+			"currency":                              req.Plan.Currency,
+			"duration_unit":                         req.Plan.DurationUnit,
+			"duration_value":                        req.Plan.DurationValue,
+			"custom_seconds":                        req.Plan.CustomSeconds,
+			"enabled":                               req.Plan.Enabled,
+			"sort_order":                            req.Plan.SortOrder,
+			"stripe_price_id":                       req.Plan.StripePriceId,
+			"creem_product_id":                      req.Plan.CreemProductId,
+			"waffo_pancake_product_id":              req.Plan.WaffoPancakeProductId,
+			"max_purchase_per_user":                 req.Plan.MaxPurchasePerUser,
+			"daily_purchase_limit":                  req.Plan.DailyPurchaseLimit,
+			"purchase_once_per_active_subscription": req.Plan.PurchaseOncePerActiveSubscription,
+			"sale_starts_at":                        req.Plan.SaleStartsAt,
+			"sale_ends_at":                          req.Plan.SaleEndsAt,
+			"daily_sale_starts_at":                  req.Plan.DailySaleStartsAt,
+			"daily_sale_ends_at":                    req.Plan.DailySaleEndsAt,
+			"weekly_sale_days":                      req.Plan.WeeklySaleDays,
+			"total_amount":                          req.Plan.TotalAmount,
+			"upgrade_group":                         req.Plan.UpgradeGroup,
+			"quota_reset_period":                    req.Plan.QuotaResetPeriod,
+			"quota_reset_custom_seconds":            req.Plan.QuotaResetCustomSeconds,
+			"updated_at":                            common.GetTimestamp(),
 		}
 		if req.Plan.AllowBalancePay != nil {
 			updateMap["allow_balance_pay"] = *req.Plan.AllowBalancePay
@@ -370,8 +396,43 @@ func AdminListUserSubscriptions(c *gin.Context) {
 	common.ApiSuccess(c, subs)
 }
 
+func AdminListPlanUserSubscriptions(c *gin.Context) {
+	planId, _ := strconv.Atoi(c.Param("id"))
+	if planId <= 0 {
+		common.ApiErrorMsg(c, "无效的套餐ID")
+		return
+	}
+
+	pageInfo := common.GetPageQuery(c)
+	records, total, err := model.ListPlanUserSubscriptions(
+		planId,
+		c.Query("status"),
+		c.Query("keyword"),
+		pageInfo.GetStartIdx(),
+		pageInfo.GetPageSize(),
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(records)
+	common.ApiSuccess(c, pageInfo)
+}
+
 type AdminCreateUserSubscriptionRequest struct {
 	PlanId int `json:"plan_id"`
+}
+
+type AdminUpdateUserSubscriptionRequest struct {
+	PlanId        *int    `json:"plan_id"`
+	Status        *string `json:"status"`
+	StartTime     *int64  `json:"start_time"`
+	EndTime       *int64  `json:"end_time"`
+	AmountTotal   *int64  `json:"amount_total"`
+	AmountUsed    *int64  `json:"amount_used"`
+	NextResetTime *int64  `json:"next_reset_time"`
 }
 
 // AdminCreateUserSubscription creates a new user subscription from a plan (no payment).
@@ -400,6 +461,42 @@ func AdminCreateUserSubscription(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+func AdminUpdateUserSubscription(c *gin.Context) {
+	subId, _ := strconv.Atoi(c.Param("id"))
+	if subId <= 0 {
+		common.ApiErrorMsg(c, "无效的订阅ID")
+		return
+	}
+	var req AdminUpdateUserSubscriptionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if req.PlanId == nil || req.Status == nil || req.StartTime == nil || req.EndTime == nil ||
+		req.AmountTotal == nil || req.AmountUsed == nil || req.NextResetTime == nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	sub, msg, err := model.AdminUpdateUserSubscription(subId, model.AdminUpdateUserSubscriptionParams{
+		PlanId:        *req.PlanId,
+		Status:        strings.TrimSpace(*req.Status),
+		StartTime:     *req.StartTime,
+		EndTime:       *req.EndTime,
+		AmountTotal:   *req.AmountTotal,
+		AmountUsed:    *req.AmountUsed,
+		NextResetTime: *req.NextResetTime,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if msg != "" {
+		common.ApiSuccess(c, gin.H{"message": msg, "subscription": sub})
+		return
+	}
+	common.ApiSuccess(c, gin.H{"subscription": sub})
 }
 
 // AdminInvalidateUserSubscription cancels a user subscription immediately.

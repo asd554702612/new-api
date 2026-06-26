@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   getDefaultOfficialTradeType,
+  isCasdoorPayment,
   isOfficialPaymentMethod,
   isSafeOfficialCheckoutUrl,
   normalizeOfficialPaymentResult,
@@ -23,8 +24,11 @@ assert.equal(
 
 assert.equal(isOfficialPaymentMethod('wechat_pay'), true);
 assert.equal(isOfficialPaymentMethod('alipay_direct'), true);
+assert.equal(isOfficialPaymentMethod('casdoor'), true);
 assert.equal(isOfficialPaymentMethod('alipay'), false);
 assert.equal(isOfficialPaymentMethod('wxpay'), false);
+assert.equal(isCasdoorPayment('casdoor'), true);
+assert.equal(isCasdoorPayment('wechat_pay'), false);
 
 assert.equal(isSafeOfficialCheckoutUrl('https://example.com/pay'), true);
 assert.equal(isSafeOfficialCheckoutUrl('http://example.com/pay'), true);
@@ -59,6 +63,26 @@ assert.deepEqual(
     kind: 'qr',
     qrValue: 'https://qr.alipay.com/example',
     tradeType: 'precreate',
+  },
+);
+assert.deepEqual(
+  normalizeOfficialPaymentResult({
+    payUrl: 'weixin://wxpay/bizpayurl?pr=casdoor',
+  }),
+  {
+    kind: 'qr',
+    qrValue: 'weixin://wxpay/bizpayurl?pr=casdoor',
+    tradeType: '',
+  },
+);
+assert.deepEqual(
+  normalizeOfficialPaymentResult({
+    pay_url: 'weixin://wxpay/bizpayurl?pr=casdoor_snake',
+  }),
+  {
+    kind: 'qr',
+    qrValue: 'weixin://wxpay/bizpayurl?pr=casdoor_snake',
+    tradeType: '',
   },
 );
 assert.deepEqual(

@@ -73,6 +73,34 @@ export interface UserSubscriptionRecord {
   subscription: UserSubscription
 }
 
+export type PlanSubscriptionStatusFilter =
+  | 'all'
+  | 'active'
+  | 'expired'
+  | 'cancelled'
+
+export interface SubscriptionBuyerUser {
+  id: number
+  username: string
+  display_name?: string
+  email?: string
+  group?: string
+  status: number
+  created_at: number
+}
+
+export interface PlanSubscriptionRecord {
+  subscription: UserSubscription
+  user: SubscriptionBuyerUser
+}
+
+export interface PageInfo<T> {
+  page: number
+  page_size: number
+  total: number
+  items: T[]
+}
+
 // ============================================================================
 // API Request/Response Types
 // ============================================================================
@@ -135,4 +163,8 @@ export interface SelfSubscriptionData {
 // Dialog Types
 // ============================================================================
 
-export type SubscriptionsDialogType = 'create' | 'update' | 'toggle-status'
+export type SubscriptionsDialogType =
+  | 'create'
+  | 'update'
+  | 'toggle-status'
+  | 'plan-subscriptions'

@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
@@ -30,6 +37,7 @@ import {
   updateAPI,
   getSystemName,
   getOAuthProviderIcon,
+  setStatusData,
   setUserData,
   onGitHubOAuthClicked,
   onDiscordOAuthClicked,
@@ -49,8 +57,6 @@ import {
   Form,
   Icon,
   Modal,
-  TabPane,
-  Tabs,
 } from '@douyinfe/semi-ui';
 import Title from '@douyinfe/semi-ui/lib/es/typography/title';
 import Text from '@douyinfe/semi-ui/lib/es/typography/text';
@@ -61,7 +67,6 @@ import {
   IconMail,
   IconLock,
   IconKey,
-  IconPhone,
   IconComment,
 } from '@douyinfe/semi-icons';
 import OIDCIcon from '../common/logo/OIDCIcon';
@@ -90,12 +95,12 @@ const LoginForm = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [submitted, setSubmitted] = useState(false);
   const [userState, userDispatch] = useContext(UserContext);
-  const [statusState] = useContext(StatusContext);
+  const [statusState, statusDispatch] = useContext(StatusContext);
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
   const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
-  const [showEmailLogin, setShowEmailLogin] = useState(false);
+  const [showEmailLogin, setShowEmailLogin] = useState(true);
   const [wechatLoading, setWechatLoading] = useState(false);
   const [githubLoading, setGithubLoading] = useState(false);
   const [discordLoading, setDiscordLoading] = useState(false);
@@ -108,7 +113,6 @@ const LoginForm = () => {
     useState(false);
   const [wechatCodeSubmitLoading, setWechatCodeSubmitLoading] = useState(false);
   const [showTwoFA, setShowTwoFA] = useState(false);
-  const [loginMode, setLoginMode] = useState('password');
   const [smsCodeLoading, setSmsCodeLoading] = useState(false);
   const [smsCountdown, setSmsCountdown] = useState(0);
   const [passkeySupported, setPasskeySupported] = useState(false);
@@ -140,6 +144,9 @@ const LoginForm = () => {
       return {};
     }
   }, [statusState?.status]);
+  const phoneVerificationEnabled = Boolean(
+    status.phone_verification_enabled || status.phone_verify_enabled,
+  );
   const hasCustomOAuthProviders =
     (status.custom_oauth_providers || []).length > 0;
   const hasOAuthLoginOptions = Boolean(
@@ -151,6 +158,29 @@ const LoginForm = () => {
       status.telegram_oauth ||
       hasCustomOAuthProviders,
   );
+  const loginIdentifier = inputs.username.trim();
+  const isEmailOrUsernameIdentifier =
+    loginIdentifier.includes('@') || /[a-zA-Z]/.test(loginIdentifier);
+  const isPhoneIdentifier = Boolean(
+    phoneVerificationEnabled && loginIdentifier && !isEmailOrUsernameIdentifier,
+  );
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const res = await API.get('/api/status', { disableDuplicate: true });
+      const { success, data } = res.data;
+      if (success) {
+        statusDispatch({ type: 'set', payload: data });
+        setStatusData(data);
+      }
+    } catch {
+      // PageLayout already handles status load errors; auth pages only need a best-effort refresh.
+    }
+  }, [statusDispatch]);
+
+  useEffect(() => {
+    refreshStatus();
+  }, [refreshStatus]);
 
   useEffect(() => {
     if (status?.turnstile_check) {
@@ -233,7 +263,7 @@ const LoginForm = () => {
   }
 
   const sendLoginPhoneCode = async () => {
-    if (!inputs.phone_number) {
+    if (!loginIdentifier || !isPhoneIdentifier) {
       showError(t('请输入手机号！'));
       return;
     }
@@ -246,7 +276,7 @@ const LoginForm = () => {
       const res = await API.post(
         `/api/user/phone/verification?turnstile=${turnstileToken}`,
         {
-          phone_number: inputs.phone_number,
+          phone_number: loginIdentifier,
           purpose: 'sms_login',
         },
       );
@@ -276,8 +306,8 @@ const LoginForm = () => {
     setSubmitted(true);
     setLoginLoading(true);
     try {
-      if (loginMode === 'sms') {
-        if (!inputs.phone_number || !inputs.sms_code) {
+      if (isPhoneIdentifier) {
+        if (!loginIdentifier || !inputs.sms_code) {
           showError(t('请输入手机号和短信验证码！'));
           return;
         }
@@ -285,7 +315,7 @@ const LoginForm = () => {
           `/api/user/login?turnstile=${turnstileToken}`,
           {
             login_type: 'sms',
-            phone_number: inputs.phone_number,
+            phone_number: loginIdentifier,
             sms_code: inputs.sms_code,
           },
         );
@@ -740,7 +770,9 @@ const LoginForm = () => {
                   onClick={handleEmailLoginClick}
                   loading={emailLoginLoading}
                 >
-                  <span className='ml-3'>{t('使用 邮箱或用户名 登录')}</span>
+                  <span className='ml-3'>
+                    {t('使用 用户名 / 邮箱 / 手机号 登录')}
+                  </span>
                 </Button>
               </div>
 
@@ -813,29 +845,24 @@ const LoginForm = () => {
         prefix={<IconMail />}
       />
 
-      <Form.Input
-        field='password'
-        label={t('密码')}
-        placeholder={t('请输入您的密码')}
-        name='password'
-        mode='password'
-        onChange={(value) => handleChange('password', value)}
-        prefix={<IconLock />}
-      />
+      {isPhoneIdentifier ? (
+        renderSmsLoginFields()
+      ) : (
+        <Form.Input
+          field='password'
+          label={t('密码')}
+          placeholder={t('请输入您的密码')}
+          name='password'
+          mode='password'
+          onChange={(value) => handleChange('password', value)}
+          prefix={<IconLock />}
+        />
+      )}
     </>
   );
 
   const renderSmsLoginFields = () => (
     <>
-      <Form.Input
-        field='phone_number'
-        label={t('手机号')}
-        placeholder={t('请输入手机号')}
-        name='phone_number'
-        onChange={(value) => handleChange('phone_number', value)}
-        prefix={<IconPhone />}
-      />
-
       <div className='flex gap-2 items-end'>
         <div className='flex-1'>
           <Form.Input
@@ -892,26 +919,7 @@ const LoginForm = () => {
                 </Button>
               )}
               <Form className='space-y-3'>
-                {status.phone_verification_enabled ? (
-                  <Tabs
-                    type='line'
-                    activeKey={loginMode}
-                    onChange={(key) => setLoginMode(key)}
-                  >
-                    <TabPane tab={t('密码登录')} itemKey='password'>
-                      <div className='space-y-3 pt-2'>
-                        {renderPasswordLoginFields()}
-                      </div>
-                    </TabPane>
-                    <TabPane tab={t('短信登录')} itemKey='sms'>
-                      <div className='space-y-3 pt-2'>
-                        {renderSmsLoginFields()}
-                      </div>
-                    </TabPane>
-                  </Tabs>
-                ) : (
-                  renderPasswordLoginFields()
-                )}
+                {renderPasswordLoginFields()}
 
                 {(hasUserAgreement || hasPrivacyPolicy) && (
                   <div className='pt-4'>

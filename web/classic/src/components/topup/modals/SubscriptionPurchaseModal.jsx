@@ -28,13 +28,13 @@ import {
   Divider,
   Tooltip,
 } from '@douyinfe/semi-ui';
-import { Crown, CalendarClock, Package } from 'lucide-react';
+import { Crown, CalendarClock, Package, Wallet } from 'lucide-react';
 import { SiAlipay, SiStripe, SiWechat } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
 import { renderQuota } from '../../../helpers';
-import { getCurrencyConfig } from '../../../helpers/render';
 import {
   formatSubscriptionDuration,
+  formatSubscriptionPrice,
   formatSubscriptionResetPeriod,
 } from '../../../helpers/subscriptionFormat';
 
@@ -46,6 +46,7 @@ const SubscriptionPurchaseModal = ({
   onCancel,
   selectedPlan,
   paying,
+  userQuota = 0,
   selectedEpayMethod,
   setSelectedEpayMethod,
   epayMethods = [],
@@ -54,36 +55,47 @@ const SubscriptionPurchaseModal = ({
   enableCreemTopUp = false,
   enableWechatPayTopUp = false,
   enableAlipayTopUp = false,
+  enableCasdoorTopUp = false,
   officialPaySupported = true,
   purchaseLimitInfo = null,
+  saleAvailability = null,
+  saleBlockText = '',
+  onPayBalance,
   onPayStripe,
   onPayCreem,
   onPayEpay,
   onPayWechatPay,
   onPayAlipay,
+  onPayCasdoor,
 }) => {
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
-  const { symbol, rate } = getCurrencyConfig();
-  const price = plan ? Number(plan.price_amount || 0) : 0;
-  const convertedPrice = price * rate;
-  const displayPrice = convertedPrice.toFixed(
-    Number.isInteger(convertedPrice) ? 0 : 2,
-  );
+  const displayPrice = formatSubscriptionPrice(plan);
+  const hasBalancePay = plan?.allow_balance_pay !== false;
   // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示
   const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
   const hasWechatPay = enableWechatPayTopUp && officialPaySupported;
   const hasAlipayDirect = enableAlipayTopUp && officialPaySupported;
+  const hasCasdoor = enableCasdoorTopUp && officialPaySupported;
   const hasOfficialDisabledByCurrency =
-    (enableWechatPayTopUp || enableAlipayTopUp) && !officialPaySupported;
+    (enableWechatPayTopUp || enableAlipayTopUp || enableCasdoorTopUp) &&
+    !officialPaySupported;
   const hasAnyPayment =
-    hasStripe || hasCreem || hasEpay || hasWechatPay || hasAlipayDirect;
+    hasBalancePay ||
+    hasStripe ||
+    hasCreem ||
+    hasEpay ||
+    hasWechatPay ||
+    hasAlipayDirect ||
+    hasCasdoor;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
     purchaseLimit > 0 && purchaseCount >= purchaseLimit;
+  const saleBlocked = saleAvailability?.available === false;
+  const purchaseBlocked = purchaseLimitReached || saleBlocked;
 
   return (
     <Modal
@@ -172,10 +184,19 @@ const SubscriptionPurchaseModal = ({
                   {t('应付金额')}：
                 </Text>
                 <Text strong className='text-xl text-purple-600'>
-                  {symbol}
                   {displayPrice}
                 </Text>
               </div>
+              {hasBalancePay && (
+                <div className='flex justify-between items-center'>
+                  <Text strong className='text-slate-700 dark:text-slate-200'>
+                    {t('当前余额')}：
+                  </Text>
+                  <Text className='text-slate-900 dark:text-slate-100'>
+                    {renderQuota(userQuota)}
+                  </Text>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -189,14 +210,41 @@ const SubscriptionPurchaseModal = ({
             />
           )}
 
+          {saleBlocked && (
+            <Banner
+              type='warning'
+              description={saleBlockText || t('套餐当前不可购买')}
+              className='!rounded-xl'
+              closeIcon={null}
+            />
+          )}
+
           {hasAnyPayment ? (
             <div className='space-y-3'>
               <Text size='small' type='tertiary'>
                 {t('选择支付方式')}：
               </Text>
 
+              {hasBalancePay && (
+                <Button
+                  theme='solid'
+                  type='primary'
+                  block
+                  icon={<Wallet size={14} />}
+                  onClick={onPayBalance}
+                  loading={paying}
+                  disabled={purchaseBlocked}
+                >
+                  {t('余额支付')}
+                </Button>
+              )}
+
               {/* Stripe / Creem */}
-              {(hasStripe || hasCreem || hasWechatPay || hasAlipayDirect) && (
+              {(hasStripe ||
+                hasCreem ||
+                hasWechatPay ||
+                hasAlipayDirect ||
+                hasCasdoor) && (
                 <div className='flex flex-wrap gap-2'>
                   {hasStripe && (
                     <Button
@@ -205,7 +253,7 @@ const SubscriptionPurchaseModal = ({
                       icon={<SiStripe size={14} color='#635BFF' />}
                       onClick={onPayStripe}
                       loading={paying}
-                      disabled={purchaseLimitReached}
+                      disabled={purchaseBlocked}
                     >
                       Stripe
                     </Button>
@@ -217,7 +265,7 @@ const SubscriptionPurchaseModal = ({
                       icon={<IconCreditCard />}
                       onClick={onPayCreem}
                       loading={paying}
-                      disabled={purchaseLimitReached}
+                      disabled={purchaseBlocked}
                     >
                       Creem
                     </Button>
@@ -229,7 +277,7 @@ const SubscriptionPurchaseModal = ({
                       icon={<SiWechat size={14} color='#07C160' />}
                       onClick={onPayWechatPay}
                       loading={paying}
-                      disabled={purchaseLimitReached}
+                      disabled={purchaseBlocked}
                     >
                       {t('微信支付')}
                     </Button>
@@ -241,9 +289,21 @@ const SubscriptionPurchaseModal = ({
                       icon={<SiAlipay size={14} color='#1677FF' />}
                       onClick={onPayAlipay}
                       loading={paying}
-                      disabled={purchaseLimitReached}
+                      disabled={purchaseBlocked}
                     >
                       {t('支付宝')}
+                    </Button>
+                  )}
+                  {hasCasdoor && (
+                    <Button
+                      theme='light'
+                      className='flex-1'
+                      icon={<IconCreditCard />}
+                      onClick={onPayCasdoor}
+                      loading={paying}
+                      disabled={purchaseBlocked}
+                    >
+                      {t('Casdoor 统一支付')}
                     </Button>
                   )}
                 </div>
@@ -252,7 +312,7 @@ const SubscriptionPurchaseModal = ({
               {hasOfficialDisabledByCurrency && (
                 <Banner
                   type='warning'
-                  description={t('官方微信/支付宝暂不支持该套餐币种')}
+                  description={t('官方微信/支付宝/Casdoor暂不支持该套餐币种')}
                   className='!rounded-xl'
                   closeIcon={null}
                 />
@@ -271,14 +331,14 @@ const SubscriptionPurchaseModal = ({
                       value: m.type,
                       label: m.name || m.type,
                     }))}
-                    disabled={purchaseLimitReached}
+                    disabled={purchaseBlocked}
                   />
                   <Button
                     theme='solid'
                     type='primary'
                     onClick={onPayEpay}
                     loading={paying}
-                    disabled={!selectedEpayMethod || purchaseLimitReached}
+                    disabled={!selectedEpayMethod || purchaseBlocked}
                   >
                     {t('支付')}
                   </Button>

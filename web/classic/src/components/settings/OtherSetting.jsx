@@ -70,6 +70,7 @@ const OtherSetting = () => {
       showError(message);
     }
     setLoading(false);
+    return success;
   };
 
   const [loadingInput, setLoadingInput] = useState({
@@ -157,7 +158,17 @@ const OtherSetting = () => {
         ...loadingInput,
         SystemName: true,
       }));
-      await updateOption('SystemName', inputs.SystemName);
+      const success = await updateOption('SystemName', inputs.SystemName);
+      if (!success) return;
+      localStorage.setItem('system_name', inputs.SystemName);
+      statusDispatch({
+        type: 'set',
+        payload: {
+          ...(statusState?.status || {}),
+          system_name: inputs.SystemName,
+        },
+      });
+      document.title = inputs.SystemName;
       showSuccess(t('系统名称已更新'));
     } catch (error) {
       console.error(t('系统名称更新失败'), error);

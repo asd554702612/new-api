@@ -1,5 +1,6 @@
 export const OFFICIAL_PAYMENT_WECHAT = 'wechat_pay';
 export const OFFICIAL_PAYMENT_ALIPAY = 'alipay_direct';
+export const OFFICIAL_PAYMENT_CASDOOR = 'casdoor';
 
 export function isWechatPayPayment(paymentType) {
   return paymentType === OFFICIAL_PAYMENT_WECHAT;
@@ -9,8 +10,16 @@ export function isAlipayDirectPayment(paymentType) {
   return paymentType === OFFICIAL_PAYMENT_ALIPAY;
 }
 
+export function isCasdoorPayment(paymentType) {
+  return paymentType === OFFICIAL_PAYMENT_CASDOOR;
+}
+
 export function isOfficialPaymentMethod(paymentType) {
-  return isWechatPayPayment(paymentType) || isAlipayDirectPayment(paymentType);
+  return (
+    isWechatPayPayment(paymentType) ||
+    isAlipayDirectPayment(paymentType) ||
+    isCasdoorPayment(paymentType)
+  );
 }
 
 export function getDefaultOfficialTradeType(paymentType, userAgent) {
@@ -49,7 +58,7 @@ export function isSafeOfficialCheckoutUrl(value) {
 export function normalizeOfficialPaymentResult(data) {
   const tradeType = data?.trade_type || '';
   const checkoutUrl = data?.checkout_url || '';
-  const qrValue = data?.code_url || data?.qr_code || '';
+  const qrValue = data?.code_url || data?.qr_code || data?.payUrl || data?.pay_url || '';
 
   if (checkoutUrl) {
     return { kind: 'redirect', url: checkoutUrl, tradeType };

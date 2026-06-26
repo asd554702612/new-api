@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Badge,
   Button,
@@ -31,26 +31,85 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess, renderQuota } from '../../helpers';
-import { getCurrencyConfig } from '../../helpers/render';
 import { RefreshCw, Sparkles } from 'lucide-react';
 import SubscriptionPurchaseModal from './modals/SubscriptionPurchaseModal';
 import OfficialPaymentModal from './modals/OfficialPaymentModal';
 import {
   formatSubscriptionDuration,
+  formatSubscriptionPrice,
   formatSubscriptionResetPeriod,
 } from '../../helpers/subscriptionFormat';
 import {
   getDefaultOfficialTradeType,
+  isCasdoorPayment,
+  isOfficialPaymentMethod,
   isSafeOfficialCheckoutUrl,
   normalizeOfficialPaymentResult,
 } from '../../helpers/officialPayment';
 
 const { Text } = Typography;
 
+const saleBlockReasonText = {
+  disabled: '套餐未启用',
+  before_start: '套餐尚未开始售卖',
+  after_end: '套餐已下架',
+  daily_window: '当前不在每日售卖时间内',
+  weekly_day: '今日不可购买该套餐',
+  sold_out: '今日已售罄',
+  purchase_once: '有效期内只能购买一次该套餐',
+};
+
+const weekdayText = {
+  1: '周一',
+  2: '周二',
+  3: '周三',
+  4: '周四',
+  5: '周五',
+  6: '周六',
+  7: '周日',
+};
+
+function planSaleAvailability(planDTO) {
+  return planDTO?.sale_availability || null;
+}
+
+function planCanBePurchased(planDTO) {
+  const availability = planSaleAvailability(planDTO);
+  return !availability || availability.available !== false;
+}
+
+function planUnavailableText(planDTO, t) {
+  const availability = planSaleAvailability(planDTO);
+  if (!availability || availability.available !== false) return '';
+  return (
+    availability.block_message ||
+    t(saleBlockReasonText[availability.block_reason] || '套餐当前不可购买')
+  );
+}
+
+function weeklySaleDaysLabel(days = [], t) {
+  if (!Array.isArray(days) || days.length === 0) return '';
+  return days.map((day) => t(weekdayText[day] || String(day))).join('/');
+}
+
+function formatCountdown(seconds, t) {
+  const value = Number(seconds || 0);
+  if (value <= 0) return '';
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  if (hours > 0) return `${hours}${t('小时')}${minutes}${t('分钟')}`;
+  return `${minutes}${t('分钟')}`;
+}
+
 // 过滤易支付方式
 function getEpayMethods(payMethods = []) {
   return (payMethods || []).filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem',
+    (m) =>
+      m?.type &&
+      m.type !== 'stripe' &&
+      m.type !== 'creem' &&
+      m.type !== 'waffo_pancake' &&
+      !isOfficialPaymentMethod(m.type),
   );
 }
 
@@ -79,17 +138,20 @@ const SubscriptionPlansCard = ({
   t,
   loading = false,
   plans = [],
+  userQuota = 0,
   payMethods = [],
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
   enableWechatPayTopUp = false,
   enableAlipayTopUp = false,
+  enableCasdoorTopUp = false,
   billingPreference,
   onChangeBillingPreference,
   activeSubscriptions = [],
   allSubscriptions = [],
   reloadSubscriptionSelf,
+  reloadUserQuota,
   withCard = true,
 }) => {
   const [open, setOpen] = useState(false);
@@ -103,6 +165,10 @@ const SubscriptionPlansCard = ({
   const epayMethods = useMemo(() => getEpayMethods(payMethods), [payMethods]);
 
   const openBuy = (p) => {
+    if (!planCanBePurchased(p)) {
+      showError(planUnavailableText(p, t));
+      return;
+    }
     setSelectedPlan(p);
     setSelectedEpayMethod(epayMethods?.[0]?.type || '');
     setOpen(true);
@@ -179,6 +245,34 @@ const SubscriptionPlansCard = ({
     }
   };
 
+  const payBalance = async () => {
+    if (!selectedPlan?.plan?.id) {
+      showError(t('请选择订阅套餐'));
+      return;
+    }
+    setPaying(true);
+    try {
+      const res = await API.post('/api/subscription/balance/pay', {
+        plan_id: selectedPlan.plan.id,
+      });
+      if (res.data?.message === 'success') {
+        showSuccess(t('购买成功'));
+        closeBuy();
+        await Promise.all([reloadSubscriptionSelf?.(), reloadUserQuota?.()]);
+      } else {
+        const errorMsg =
+          typeof res.data?.data === 'string'
+            ? res.data.data
+            : res.data?.message || t('支付失败');
+        showError(errorMsg);
+      }
+    } catch (e) {
+      showError(t('支付请求失败'));
+    } finally {
+      setPaying(false);
+    }
+  };
+
   const payEpay = async () => {
     if (!selectedEpayMethod) {
       showError(t('请选择支付方式'));
@@ -218,8 +312,8 @@ const SubscriptionPlansCard = ({
       showError(t('支付请求失败'));
       return;
     }
-    const { message, data } = res.data || {};
-    if (message !== 'success') {
+    const { success, message, data } = res.data || {};
+    if (success !== true && message !== 'success') {
       const errorMsg =
         typeof data === 'string' ? data : message || t('支付失败');
       showError(errorMsg);
@@ -238,7 +332,7 @@ const SubscriptionPlansCard = ({
     }
 
     if (result.kind === 'qr') {
-      setOfficialPayment(result);
+      setOfficialPayment({ ...result, tradeNo: data?.trade_no || '' });
       setOfficialPaymentOpen(true);
       closeBuy();
       return;
@@ -273,6 +367,63 @@ const SubscriptionPlansCard = ({
     showError(t('支付响应缺少跳转地址或二维码'));
   };
 
+  useEffect(() => {
+    const tradeNo = officialPayment?.tradeNo;
+    if (!officialPaymentOpen || !tradeNo) {
+      return undefined;
+    }
+
+    let stopped = false;
+    let attempts = 0;
+    const maxAttempts = 40;
+
+    const pollOrderStatus = async () => {
+      if (stopped) {
+        return;
+      }
+      attempts += 1;
+      try {
+        const res = await API.get(
+          `/api/payment/orders/my?keyword=${encodeURIComponent(
+            tradeNo,
+          )}&page=1&page_size=1`,
+        );
+        const items = res?.data?.data?.items || [];
+        const order =
+          items.find((item) => item.trade_no === tradeNo) || items[0];
+        const status = String(order?.status || '').toUpperCase();
+        if (status === 'COMPLETED') {
+          stopped = true;
+          setOfficialPaymentOpen(false);
+          setOfficialPayment(null);
+          showSuccess(t('更新成功'));
+          reloadSubscriptionSelf?.();
+          return;
+        }
+        if (
+          ['FAILED', 'EXPIRED', 'CANCELLED', 'REFUNDED'].includes(status)
+        ) {
+          stopped = true;
+          setOfficialPaymentOpen(false);
+          setOfficialPayment(null);
+          showError(t('支付未完成或已关闭'));
+        }
+      } catch (error) {
+        // Keep waiting; transient network errors should not close the QR modal.
+      }
+      if (attempts >= maxAttempts) {
+        stopped = true;
+      }
+    };
+
+    pollOrderStatus();
+    const timer = window.setInterval(pollOrderStatus, 3000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [officialPaymentOpen, officialPayment?.tradeNo, reloadSubscriptionSelf, t]);
+
   const payOfficial = async (paymentType) => {
     if (!selectedPlan?.plan?.id) {
       showError(t('请选择订阅套餐'));
@@ -288,11 +439,17 @@ const SubscriptionPlansCard = ({
       const endpoint =
         paymentType === 'wechat_pay'
           ? '/api/subscription/wechat-pay/pay'
-          : '/api/subscription/alipay/pay';
-      const res = await API.post(endpoint, {
+          : isCasdoorPayment(paymentType)
+            ? '/api/subscription/casdoor/pay'
+            : '/api/subscription/alipay/pay';
+      const payload = {
         plan_id: selectedPlan.plan.id,
-        trade_type: getDefaultOfficialTradeType(paymentType),
-      });
+      };
+      const tradeType = getDefaultOfficialTradeType(paymentType);
+      if (tradeType) {
+        payload.trade_type = tradeType;
+      }
+      const res = await API.post(endpoint, payload);
       await handleOfficialPaymentResponse(res);
     } catch (e) {
       showError(t('支付请求失败'));
@@ -593,15 +750,28 @@ const SubscriptionPlansCard = ({
               {plans.map((p, index) => {
                 const plan = p?.plan;
                 const totalAmount = Number(plan?.total_amount || 0);
-                const { symbol, rate } = getCurrencyConfig();
-                const price = Number(plan?.price_amount || 0);
-                const convertedPrice = price * rate;
-                const displayPrice = convertedPrice.toFixed(
-                  Number.isInteger(convertedPrice) ? 0 : 2,
-                );
+                const displayPrice = formatSubscriptionPrice(plan);
                 const isPopular = index === 0 && plans.length > 1;
                 const limit = Number(plan?.max_purchase_per_user || 0);
+                const availability = planSaleAvailability(p);
+                const canPurchase = planCanBePurchased(p);
+                const unavailableText = planUnavailableText(p, t);
+                const weeklyDaysLabel = weeklySaleDaysLabel(
+                  availability?.weekly_sale_days,
+                  t,
+                );
+                const countdownText = formatCountdown(
+                  availability?.daily_sale_countdown_seconds,
+                  t,
+                );
                 const limitLabel = limit > 0 ? `${t('限购')} ${limit}` : null;
+                const dailyWindowLabel =
+                  plan?.daily_sale_starts_at && plan?.daily_sale_ends_at
+                    ? `${t('每日售卖')}: ${plan.daily_sale_starts_at}-${plan.daily_sale_ends_at}`
+                    : null;
+                const weeklyLabel = weeklyDaysLabel
+                  ? `${t('每周上架')}: ${weeklyDaysLabel}`
+                  : null;
                 const totalLabel =
                   totalAmount > 0
                     ? `${t('总额度')}: ${renderQuota(totalAmount)}`
@@ -625,6 +795,15 @@ const SubscriptionPlansCard = ({
                       }
                     : { label: totalLabel },
                   limitLabel ? { label: limitLabel } : null,
+                  dailyWindowLabel ? { label: dailyWindowLabel } : null,
+                  weeklyLabel ? { label: weeklyLabel } : null,
+                  !canPurchase && unavailableText
+                    ? {
+                        label: countdownText
+                          ? `${unavailableText} · ${t('剩余')} ${countdownText}`
+                          : unavailableText,
+                      }
+                    : null,
                   upgradeLabel ? { label: upgradeLabel } : null,
                 ].filter(Boolean);
 
@@ -670,9 +849,6 @@ const SubscriptionPlansCard = ({
                       {/* 价格区域 */}
                       <div className='py-2'>
                         <div className='flex items-baseline justify-start'>
-                          <span className='text-xl font-bold text-purple-600'>
-                            {symbol}
-                          </span>
                           <span className='text-3xl font-bold text-purple-600'>
                             {displayPrice}
                           </span>
@@ -715,23 +891,29 @@ const SubscriptionPlansCard = ({
                         {(() => {
                           const count = getPlanPurchaseCount(p?.plan?.id);
                           const reached = limit > 0 && count >= limit;
+                          const blocked = reached || !canPurchase;
                           const tip = reached
                             ? t('已达到购买上限') + ` (${count}/${limit})`
-                            : '';
+                            : unavailableText;
+                          const label = reached
+                            ? t('已达上限')
+                            : !canPurchase
+                              ? t('暂不可购买')
+                              : t('立即订阅');
                           const buttonEl = (
                             <Button
                               theme='outline'
                               type='primary'
                               block
-                              disabled={reached}
+                              disabled={blocked}
                               onClick={() => {
-                                if (!reached) openBuy(p);
+                                if (!blocked) openBuy(p);
                               }}
                             >
-                              {reached ? t('已达上限') : t('立即订阅')}
+                              {label}
                             </Button>
                           );
-                          return reached ? (
+                          return blocked ? (
                             <Tooltip content={tip} position='top'>
                               {buttonEl}
                             </Tooltip>
@@ -773,11 +955,13 @@ const SubscriptionPlansCard = ({
         selectedEpayMethod={selectedEpayMethod}
         setSelectedEpayMethod={setSelectedEpayMethod}
         epayMethods={epayMethods}
+        userQuota={userQuota}
         enableOnlineTopUp={enableOnlineTopUp}
         enableStripeTopUp={enableStripeTopUp}
         enableCreemTopUp={enableCreemTopUp}
         enableWechatPayTopUp={enableWechatPayTopUp}
         enableAlipayTopUp={enableAlipayTopUp}
+        enableCasdoorTopUp={enableCasdoorTopUp}
         officialPaySupported={planSupportsOfficialPay(selectedPlan?.plan)}
         purchaseLimitInfo={
           selectedPlan?.plan?.id
@@ -787,11 +971,15 @@ const SubscriptionPlansCard = ({
               }
             : null
         }
+        saleAvailability={planSaleAvailability(selectedPlan)}
+        saleBlockText={planUnavailableText(selectedPlan, t)}
+        onPayBalance={payBalance}
         onPayStripe={payStripe}
         onPayCreem={payCreem}
         onPayEpay={payEpay}
         onPayWechatPay={() => payOfficial('wechat_pay')}
         onPayAlipay={() => payOfficial('alipay_direct')}
+        onPayCasdoor={() => payOfficial('casdoor')}
       />
       <OfficialPaymentModal
         t={t}

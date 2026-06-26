@@ -268,7 +268,7 @@ const AccountManagement = ({
                         onClick={() => setShowPhoneBindModal(true)}
                       >
                         {isBound(userState.user?.phone_number)
-                          ? t('修改绑定')
+                          ? t('修改手机号')
                           : t('绑定')}
                       </Button>
                     </div>

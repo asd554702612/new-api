@@ -36,6 +36,7 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 func GetPricing(c *gin.Context) {
 	pricing := model.GetPricing()
 	userId, exists := c.Get("id")
+	userIdInt := 0
 	usableGroup := map[string]string{}
 	groupRatio := map[string]float64{}
 	for s, f := range ratio_setting.GetGroupRatioCopy() {
@@ -43,6 +44,7 @@ func GetPricing(c *gin.Context) {
 	}
 	var group string
 	if exists {
+		userIdInt = userId.(int)
 		user, err := model.GetUserCache(userId.(int))
 		if err == nil {
 			group = user.Group
@@ -57,6 +59,13 @@ func GetPricing(c *gin.Context) {
 
 	usableGroup = service.GetUserUsableGroups(group)
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
+	pricing = service.FilterPricingBySquareAvailability(pricing)
+	var err error
+	pricing, err = service.MarkPricingSelections(userIdInt, pricing)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	// check groupRatio contains usableGroup
 	for group := range ratio_setting.GetGroupRatioCopy() {
 		if _, ok := usableGroup[group]; !ok {
@@ -72,7 +81,10 @@ func GetPricing(c *gin.Context) {
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroup(group),
-		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
+		"model_square": gin.H{
+			"selection_enabled": service.ModelSquareSelectionEnabled(),
+		},
+		"pricing_version": "a42d372ccf0b5dd13ecf71203521f9d2",
 	})
 }
 

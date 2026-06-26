@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/cachex"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/samber/hot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -31,6 +33,24 @@ const (
 	SubscriptionResetWeekly  = "weekly"
 	SubscriptionResetMonthly = "monthly"
 	SubscriptionResetCustom  = "custom"
+)
+
+const (
+	SubscriptionPlanSaleBlockNone         = ""
+	SubscriptionPlanSaleBlockDisabled     = "disabled"
+	SubscriptionPlanSaleBlockBeforeStart  = "before_start"
+	SubscriptionPlanSaleBlockAfterEnd     = "after_end"
+	SubscriptionPlanSaleBlockDailyWindow  = "daily_window"
+	SubscriptionPlanSaleBlockWeeklyDay    = "weekly_day"
+	SubscriptionPlanSaleBlockSoldOut      = "sold_out"
+	SubscriptionPlanSaleBlockPurchaseOnce = "purchase_once"
+	SubscriptionPlanSaleBlockPurchaseMax  = "purchase_max"
+)
+
+const (
+	SubscriptionSourceOrder     = "order"
+	SubscriptionSourceAdmin     = "admin"
+	SubscriptionSourceGiftClaim = "gift_claim"
 )
 
 var (
@@ -169,6 +189,15 @@ type SubscriptionPlan struct {
 	// Max purchases per user (0 = unlimited)
 	MaxPurchasePerUser int `json:"max_purchase_per_user" gorm:"type:int;default:0"`
 
+	// Sale controls (0/empty = unrestricted)
+	DailyPurchaseLimit                int    `json:"daily_purchase_limit" gorm:"type:int;default:0"`
+	PurchaseOncePerActiveSubscription bool   `json:"purchase_once_per_active_subscription" gorm:"default:false"`
+	SaleStartsAt                      int64  `json:"sale_starts_at" gorm:"type:bigint;default:0"`
+	SaleEndsAt                        int64  `json:"sale_ends_at" gorm:"type:bigint;default:0"`
+	DailySaleStartsAt                 string `json:"daily_sale_starts_at" gorm:"type:varchar(5);default:''"`
+	DailySaleEndsAt                   string `json:"daily_sale_ends_at" gorm:"type:varchar(5);default:''"`
+	WeeklySaleDays                    string `json:"weekly_sale_days" gorm:"type:text;default:'[]'"`
+
 	// Upgrade user group after purchase (empty = no change)
 	UpgradeGroup string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 
@@ -199,6 +228,28 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 	if p.AllowBalancePay == nil {
 		p.AllowBalancePay = common.GetPointer(true)
 	}
+	if strings.TrimSpace(p.WeeklySaleDays) == "" {
+		p.WeeklySaleDays = "[]"
+	}
+}
+
+type SubscriptionPlanSaleAvailability struct {
+	Available                     bool   `json:"available"`
+	BlockReason                   string `json:"block_reason"`
+	BlockMessage                  string `json:"block_message"`
+	DailyPurchaseLimit            int    `json:"daily_purchase_limit"`
+	DailyPurchaseRemaining        *int   `json:"daily_purchase_remaining,omitempty"`
+	DailySaleStatus               string `json:"daily_sale_status"`
+	DailySaleCountdownSeconds     int64  `json:"daily_sale_countdown_seconds"`
+	DailySaleAvailableForPayment  bool   `json:"daily_sale_available_for_payment"`
+	WeeklySaleDays                []int  `json:"weekly_sale_days"`
+	WeeklySaleStatus              string `json:"weekly_sale_status"`
+	WeeklySaleAvailableForPayment bool   `json:"weekly_sale_available_for_payment"`
+	PurchaseOnceAvailable         bool   `json:"purchase_once_available_for_payment"`
+	PurchaseOnceUnavailableUntil  *int64 `json:"purchase_once_unavailable_until,omitempty"`
+	SaleStartsAt                  int64  `json:"sale_starts_at"`
+	SaleEndsAt                    int64  `json:"sale_ends_at"`
+	NextAvailableAt               *int64 `json:"next_available_at,omitempty"`
 }
 
 // Subscription order (payment -> webhook -> create UserSubscription)
@@ -279,6 +330,11 @@ func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 
 type SubscriptionSummary struct {
 	Subscription *UserSubscription `json:"subscription"`
+}
+
+type PlanUserSubscriptionRecord struct {
+	Subscription *UserSubscription `json:"subscription"`
+	User         *User             `json:"user"`
 }
 
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
@@ -398,6 +454,297 @@ func CountUserSubscriptionsByPlan(userId int, planId int) (int64, error) {
 	return count, nil
 }
 
+func ValidateSubscriptionPlanSaleControls(plan *SubscriptionPlan) error {
+	if plan == nil {
+		return errors.New("invalid plan")
+	}
+	if plan.DailyPurchaseLimit < 0 {
+		return errors.New("每日最大售出份数不能为负数")
+	}
+	if plan.SaleStartsAt > 0 && plan.SaleEndsAt > 0 && plan.SaleEndsAt <= plan.SaleStartsAt {
+		return errors.New("自动下架时间必须晚于自动上架时间")
+	}
+	start := strings.TrimSpace(plan.DailySaleStartsAt)
+	end := strings.TrimSpace(plan.DailySaleEndsAt)
+	if (start == "") != (end == "") {
+		return errors.New("每日上架时间和下架时间必须同时填写")
+	}
+	if start != "" {
+		if _, ok := parseSubscriptionSaleMinute(start); !ok {
+			return errors.New("每日上架时间格式必须为 HH:mm")
+		}
+		if _, ok := parseSubscriptionSaleMinute(end); !ok {
+			return errors.New("每日下架时间格式必须为 HH:mm")
+		}
+		plan.DailySaleStartsAt = start
+		plan.DailySaleEndsAt = end
+	} else {
+		plan.DailySaleStartsAt = ""
+		plan.DailySaleEndsAt = ""
+	}
+	days, err := ParseSubscriptionPlanWeeklySaleDays(plan.WeeklySaleDays)
+	if err != nil {
+		return err
+	}
+	plan.WeeklySaleDays = subscriptionWeeklySaleDaysString(days)
+	return nil
+}
+
+func ParseSubscriptionPlanWeeklySaleDays(raw string) ([]int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []int{}, nil
+	}
+	var days []int
+	if err := common.UnmarshalJsonStr(raw, &days); err != nil {
+		return nil, errors.New("每周上架日格式错误")
+	}
+	seen := make(map[int]bool, len(days))
+	normalized := make([]int, 0, len(days))
+	for _, day := range days {
+		if day < 1 || day > 7 {
+			return nil, errors.New("每周上架日必须在 1 到 7 之间")
+		}
+		if seen[day] {
+			continue
+		}
+		seen[day] = true
+		normalized = append(normalized, day)
+	}
+	sort.Ints(normalized)
+	return normalized, nil
+}
+
+func subscriptionWeeklySaleDaysString(days []int) string {
+	if len(days) == 0 {
+		return "[]"
+	}
+	b, err := common.Marshal(days)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+func GetSubscriptionPlanSaleAvailability(userId int, plan *SubscriptionPlan, now time.Time) (*SubscriptionPlanSaleAvailability, error) {
+	return getSubscriptionPlanSaleAvailabilityTx(nil, userId, plan, now)
+}
+
+func getSubscriptionPlanSaleAvailabilityTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, now time.Time) (*SubscriptionPlanSaleAvailability, error) {
+	if tx == nil {
+		tx = DB
+	}
+	if plan == nil || plan.Id <= 0 {
+		return nil, errors.New("invalid plan")
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	days, err := ParseSubscriptionPlanWeeklySaleDays(plan.WeeklySaleDays)
+	if err != nil {
+		return nil, err
+	}
+	result := &SubscriptionPlanSaleAvailability{
+		Available:                     true,
+		BlockReason:                   SubscriptionPlanSaleBlockNone,
+		DailyPurchaseLimit:            plan.DailyPurchaseLimit,
+		DailySaleStatus:               "available",
+		DailySaleAvailableForPayment:  true,
+		WeeklySaleDays:                days,
+		WeeklySaleStatus:              "available",
+		WeeklySaleAvailableForPayment: true,
+		PurchaseOnceAvailable:         true,
+		SaleStartsAt:                  plan.SaleStartsAt,
+		SaleEndsAt:                    plan.SaleEndsAt,
+	}
+	if !plan.Enabled {
+		result.block(SubscriptionPlanSaleBlockDisabled, "套餐未启用")
+	}
+	nowUnix := now.Unix()
+	if result.Available && plan.SaleStartsAt > 0 && nowUnix < plan.SaleStartsAt {
+		result.NextAvailableAt = common.GetPointer(plan.SaleStartsAt)
+		result.block(SubscriptionPlanSaleBlockBeforeStart, "套餐尚未开始售卖")
+	}
+	if result.Available && plan.SaleEndsAt > 0 && nowUnix >= plan.SaleEndsAt {
+		result.block(SubscriptionPlanSaleBlockAfterEnd, "套餐已下架")
+	}
+	weeklyAvailable := subscriptionWeeklySaleAvailable(days, now)
+	if !weeklyAvailable {
+		result.WeeklySaleStatus = "off_day"
+		result.WeeklySaleAvailableForPayment = false
+		if result.Available {
+			result.block(SubscriptionPlanSaleBlockWeeklyDay, "今日不可购买该套餐")
+		}
+	}
+	dailyStatus, countdown := subscriptionDailySaleState(plan, now)
+	result.DailySaleStatus = dailyStatus
+	result.DailySaleCountdownSeconds = countdown
+	result.DailySaleAvailableForPayment = dailyStatus == "available" && weeklyAvailable
+	if result.Available && dailyStatus != "available" {
+		result.block(SubscriptionPlanSaleBlockDailyWindow, "当前不在每日售卖时间内")
+	}
+	if plan.PurchaseOncePerActiveSubscription && userId > 0 {
+		active, until, err := userHasActiveSubscriptionForPlanTx(tx, userId, plan.Id, nowUnix)
+		if err != nil {
+			return nil, err
+		}
+		if active {
+			result.PurchaseOnceAvailable = false
+			if until > 0 {
+				result.PurchaseOnceUnavailableUntil = common.GetPointer(until)
+			}
+			if result.Available {
+				result.block(SubscriptionPlanSaleBlockPurchaseOnce, "有效期内只能购买一次该套餐")
+			}
+		}
+	}
+	if plan.MaxPurchasePerUser > 0 && userId > 0 {
+		count, err := countUserSubscriptionsByPlanTx(tx, userId, plan.Id)
+		if err != nil {
+			return nil, err
+		}
+		if count >= int64(plan.MaxPurchasePerUser) && result.Available {
+			result.block(SubscriptionPlanSaleBlockPurchaseMax, "已达到该套餐购买上限")
+		}
+	}
+	if plan.DailyPurchaseLimit > 0 {
+		count, err := countCompletedSubscriptionOrdersTodayTx(tx, plan.Id, now)
+		if err != nil {
+			return nil, err
+		}
+		remaining := plan.DailyPurchaseLimit - int(count)
+		if remaining < 0 {
+			remaining = 0
+		}
+		result.DailyPurchaseRemaining = common.GetPointer(remaining)
+		if remaining <= 0 && result.Available {
+			result.DailySaleStatus = "sold_out"
+			result.DailySaleAvailableForPayment = false
+			result.block(SubscriptionPlanSaleBlockSoldOut, "今日已售罄")
+		}
+	}
+	return result, nil
+}
+
+func (a *SubscriptionPlanSaleAvailability) block(reason string, message string) {
+	a.Available = false
+	a.BlockReason = reason
+	a.BlockMessage = message
+}
+
+func EnsureSubscriptionPlanAvailableForPurchaseTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, now time.Time) error {
+	availability, err := getSubscriptionPlanSaleAvailabilityTx(tx, userId, plan, now)
+	if err != nil {
+		return err
+	}
+	if !availability.Available {
+		if strings.TrimSpace(availability.BlockMessage) != "" {
+			return errors.New(availability.BlockMessage)
+		}
+		return errors.New("套餐当前不可购买")
+	}
+	return nil
+}
+
+func userHasActiveSubscriptionForPlanTx(tx *gorm.DB, userId int, planId int, nowUnix int64) (bool, int64, error) {
+	var sub UserSubscription
+	err := tx.Model(&UserSubscription{}).
+		Where("user_id = ? AND plan_id = ? AND status = ? AND end_time > ?", userId, planId, "active", nowUnix).
+		Order("end_time desc").
+		First(&sub).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, 0, nil
+	}
+	if err != nil {
+		return false, 0, err
+	}
+	return true, sub.EndTime, nil
+}
+
+func countUserSubscriptionsByPlanTx(tx *gorm.DB, userId int, planId int) (int64, error) {
+	var count int64
+	err := tx.Model(&UserSubscription{}).
+		Where("user_id = ? AND plan_id = ?", userId, planId).
+		Count(&count).Error
+	return count, err
+}
+
+func countCompletedSubscriptionOrdersTodayTx(tx *gorm.DB, planId int, now time.Time) (int64, error) {
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	end := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location()).Unix()
+	var count int64
+	err := tx.Model(&SubscriptionOrder{}).
+		Where("plan_id = ? AND status = ? AND complete_time >= ? AND complete_time < ?", planId, common.TopUpStatusSuccess, start, end).
+		Count(&count).Error
+	return count, err
+}
+
+func subscriptionWeeklySaleAvailable(days []int, now time.Time) bool {
+	if len(days) == 0 {
+		return true
+	}
+	weekday := int(now.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	for _, day := range days {
+		if day == weekday {
+			return true
+		}
+	}
+	return false
+}
+
+func subscriptionDailySaleState(plan *SubscriptionPlan, now time.Time) (string, int64) {
+	if plan == nil || strings.TrimSpace(plan.DailySaleStartsAt) == "" || strings.TrimSpace(plan.DailySaleEndsAt) == "" {
+		return "available", 0
+	}
+	startMinute, ok := parseSubscriptionSaleMinute(plan.DailySaleStartsAt)
+	if !ok {
+		return "unavailable", 0
+	}
+	endMinute, ok := parseSubscriptionSaleMinute(plan.DailySaleEndsAt)
+	if !ok {
+		return "unavailable", 0
+	}
+	current := now.Hour()*60 + now.Minute()
+	if startMinute == endMinute {
+		return "available", 0
+	}
+	if startMinute < endMinute {
+		if current >= startMinute && current < endMinute {
+			return "available", int64((endMinute - current) * 60)
+		}
+		if current < startMinute {
+			return "pending", int64((startMinute - current) * 60)
+		}
+		return "unavailable", int64((24*60 - current + startMinute) * 60)
+	}
+	if current >= startMinute || current < endMinute {
+		if current >= startMinute {
+			return "available", int64((24*60 - current + endMinute) * 60)
+		}
+		return "available", int64((endMinute - current) * 60)
+	}
+	return "pending", int64((startMinute - current) * 60)
+}
+
+func parseSubscriptionSaleMinute(value string) (int, bool) {
+	value = strings.TrimSpace(value)
+	if len(value) != 5 || value[2] != ':' {
+		return 0, false
+	}
+	hour, err := strconv.Atoi(value[:2])
+	if err != nil || hour < 0 || hour > 23 {
+		return 0, false
+	}
+	minute, err := strconv.Atoi(value[3:])
+	if err != nil || minute < 0 || minute > 59 {
+		return 0, false
+	}
+	return hour*60 + minute, true
+}
+
 func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
 	if userId <= 0 {
 		return "", errors.New("invalid userId")
@@ -406,7 +753,11 @@ func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
 		tx = DB
 	}
 	var group string
-	if err := tx.Model(&User{}).Where("id = ?", userId).Select(commonGroupCol).Find(&group).Error; err != nil {
+	groupCol := commonGroupCol
+	if groupCol == "" {
+		groupCol = "`group`"
+	}
+	if err := tx.Model(&User{}).Where("id = ?", userId).Select(groupCol).Find(&group).Error; err != nil {
 		return "", err
 	}
 	return group, nil
@@ -458,10 +809,8 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		return nil, errors.New("invalid user id")
 	}
 	if plan.MaxPurchasePerUser > 0 {
-		var count int64
-		if err := tx.Model(&UserSubscription{}).
-			Where("user_id = ? AND plan_id = ?", userId, plan.Id).
-			Count(&count).Error; err != nil {
+		count, err := countUserSubscriptionsByPlanTx(tx, userId, plan.Id)
+		if err != nil {
 			return nil, err
 		}
 		if count >= int64(plan.MaxPurchasePerUser) {
@@ -559,7 +908,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 			// still allow completion for already purchased orders
 		}
 		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
-		_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+		_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, SubscriptionSourceOrder)
 		if err != nil {
 			return err
 		}
@@ -614,14 +963,15 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if err := tx.Where("trade_no = ?", order.TradeNo).First(&topup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			topup = TopUp{
-				UserId:        order.UserId,
-				Amount:        0,
-				Money:         order.Money,
-				TradeNo:       order.TradeNo,
-				PaymentMethod: order.PaymentMethod,
-				CreateTime:    order.CreateTime,
-				CompleteTime:  now,
-				Status:        common.TopUpStatusSuccess,
+				UserId:          order.UserId,
+				Amount:          0,
+				Money:           order.Money,
+				TradeNo:         order.TradeNo,
+				PaymentMethod:   order.PaymentMethod,
+				PaymentProvider: order.PaymentProvider,
+				CreateTime:      order.CreateTime,
+				CompleteTime:    now,
+				Status:          common.TopUpStatusSuccess,
 			}
 			return tx.Create(&topup).Error
 		}
@@ -631,6 +981,11 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if topup.PaymentMethod == "" {
 		topup.PaymentMethod = order.PaymentMethod
 	} else if topup.PaymentMethod != order.PaymentMethod {
+		return ErrPaymentMethodMismatch
+	}
+	if topup.PaymentProvider == "" {
+		topup.PaymentProvider = order.PaymentProvider
+	} else if order.PaymentProvider != "" && topup.PaymentProvider != order.PaymentProvider {
 		return ErrPaymentMethodMismatch
 	}
 	if topup.CreateTime == 0 {
@@ -676,7 +1031,7 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 		return "", err
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		_, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "admin")
+		_, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, SubscriptionSourceAdmin)
 		return err
 	})
 	if err != nil {
@@ -689,15 +1044,175 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 	return "", nil
 }
 
-func calcSubscriptionBalanceQuota(priceAmount float64) (int, error) {
-	if priceAmount <= 0 {
+type AdminUpdateUserSubscriptionParams struct {
+	PlanId        int
+	Status        string
+	StartTime     int64
+	EndTime       int64
+	AmountTotal   int64
+	AmountUsed    int64
+	NextResetTime int64
+}
+
+func validateAdminUpdateUserSubscriptionParams(params AdminUpdateUserSubscriptionParams) error {
+	if params.PlanId <= 0 {
+		return errors.New("无效的套餐ID")
+	}
+	switch params.Status {
+	case "active", "expired", "cancelled":
+	default:
+		return errors.New("无效的订阅状态")
+	}
+	if params.StartTime <= 0 {
+		return errors.New("开始时间必须大于 0")
+	}
+	if params.EndTime <= 0 {
+		return errors.New("结束时间必须大于 0")
+	}
+	if params.EndTime <= params.StartTime {
+		return errors.New("结束时间必须晚于开始时间")
+	}
+	if params.AmountTotal < 0 {
+		return errors.New("总额度不能小于 0")
+	}
+	if params.AmountUsed < 0 {
+		return errors.New("已用额度不能小于 0")
+	}
+	if params.NextResetTime < 0 {
+		return errors.New("下次重置时间不能小于 0")
+	}
+	if params.AmountTotal > 0 && params.AmountUsed > params.AmountTotal {
+		return errors.New("已用额度不能超过总额度")
+	}
+	return nil
+}
+
+func AdminUpdateUserSubscription(userSubscriptionId int, params AdminUpdateUserSubscriptionParams) (*UserSubscription, string, error) {
+	if userSubscriptionId <= 0 {
+		return nil, "", errors.New("invalid userSubscriptionId")
+	}
+	if err := validateAdminUpdateUserSubscriptionParams(params); err != nil {
+		return nil, "", err
+	}
+	now := common.GetTimestamp()
+	var updatedSub UserSubscription
+	cacheGroup := ""
+	messageGroup := ""
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var plan SubscriptionPlan
+		if err := tx.Where("id = ?", params.PlanId).First(&plan).Error; err != nil {
+			return err
+		}
+
+		var sub UserSubscription
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
+			return err
+		}
+
+		oldSub := sub
+		if strings.TrimSpace(oldSub.UpgradeGroup) != "" {
+			target, err := downgradeUserGroupForSubscriptionTx(tx, &oldSub, now)
+			if err != nil {
+				return err
+			}
+			if target != "" {
+				cacheGroup = target
+			}
+		}
+
+		newUpgradeGroup := ""
+		newPrevUserGroup := ""
+		isActive := params.Status == "active" && params.EndTime > now
+		if isActive {
+			newUpgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
+		}
+		if newUpgradeGroup != "" {
+			currentGroup, err := getUserGroupByIdTx(tx, sub.UserId)
+			if err != nil {
+				return err
+			}
+			if currentGroup != newUpgradeGroup {
+				newPrevUserGroup = currentGroup
+				if err := tx.Model(&User{}).Where("id = ?", sub.UserId).
+					Update("group", newUpgradeGroup).Error; err != nil {
+					return err
+				}
+				cacheGroup = newUpgradeGroup
+				messageGroup = newUpgradeGroup
+			} else if strings.TrimSpace(oldSub.UpgradeGroup) == newUpgradeGroup {
+				newPrevUserGroup = oldSub.PrevUserGroup
+			}
+		}
+
+		updates := map[string]interface{}{
+			"plan_id":         params.PlanId,
+			"status":          params.Status,
+			"start_time":      params.StartTime,
+			"end_time":        params.EndTime,
+			"amount_total":    params.AmountTotal,
+			"amount_used":     params.AmountUsed,
+			"next_reset_time": params.NextResetTime,
+			"upgrade_group":   newUpgradeGroup,
+			"prev_user_group": newPrevUserGroup,
+			"updated_at":      now,
+		}
+		if err := tx.Model(&sub).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("id = ?", userSubscriptionId).First(&updatedSub).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	if cacheGroup != "" && updatedSub.UserId > 0 {
+		_ = UpdateUserGroupCache(updatedSub.UserId, cacheGroup)
+	}
+	if messageGroup != "" {
+		return &updatedSub, fmt.Sprintf("用户分组将升级到 %s", messageGroup), nil
+	}
+	return &updatedSub, "", nil
+}
+
+func subscriptionPlanPriceUSD(plan *SubscriptionPlan) (decimal.Decimal, error) {
+	if plan == nil {
+		return decimal.Zero, errors.New("subscription plan is nil")
+	}
+	price := decimal.NewFromFloat(plan.PriceAmount)
+	if price.LessThanOrEqual(decimal.Zero) {
+		return decimal.Zero, nil
+	}
+	currency := strings.ToUpper(strings.TrimSpace(plan.Currency))
+	switch currency {
+	case "", "USD":
+		return price, nil
+	case "CNY":
+		rate := decimal.NewFromFloat(operation_setting.USDExchangeRate)
+		if rate.LessThanOrEqual(decimal.Zero) {
+			return decimal.Zero, errors.New("美元汇率配置错误")
+		}
+		return price.Div(rate), nil
+	default:
+		return decimal.Zero, fmt.Errorf("不支持的订阅套餐币种: %s", plan.Currency)
+	}
+}
+
+func calcSubscriptionBalanceQuota(plan *SubscriptionPlan) (int, error) {
+	priceUSD, err := subscriptionPlanPriceUSD(plan)
+	if err != nil {
+		return 0, err
+	}
+	if priceUSD.LessThanOrEqual(decimal.Zero) {
 		return 0, nil
 	}
 	if common.QuotaPerUnit <= 0 {
 		return 0, errors.New("额度单位配置错误")
 	}
-	quota := decimal.NewFromFloat(priceAmount).
-		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+	quota := priceUSD.Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
 		Ceil().
 		IntPart()
 	return int(quota), nil
@@ -721,6 +1236,9 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		if !plan.Enabled {
 			return errors.New("套餐未启用")
 		}
+		if err := EnsureSubscriptionPlanAvailableForPurchaseTx(tx, userId, plan, time.Now()); err != nil {
+			return err
+		}
 		if plan.PriceAmount < 0 {
 			return errors.New("套餐价格不能为负数")
 		}
@@ -728,7 +1246,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			return errors.New("该套餐不允许使用余额兑换")
 		}
 
-		requiredQuota, err := calcSubscriptionBalanceQuota(plan.PriceAmount)
+		requiredQuota, err := calcSubscriptionBalanceQuota(plan)
 		if err != nil {
 			return err
 		}
@@ -839,6 +1357,108 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
+func ListPlanUserSubscriptions(planId int, status string, keyword string, startIdx int, num int) ([]PlanUserSubscriptionRecord, int64, error) {
+	if planId <= 0 {
+		return nil, 0, errors.New("invalid planId")
+	}
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	if num <= 0 {
+		num = common.ItemsPerPage
+	}
+
+	query := DB.Model(&UserSubscription{}).
+		Joins("LEFT JOIN users ON users.id = user_subscriptions.user_id").
+		Where("user_subscriptions.plan_id = ?", planId)
+
+	now := common.GetTimestamp()
+	switch status {
+	case "active":
+		query = query.Where("user_subscriptions.status = ? AND user_subscriptions.end_time > ?", "active", now)
+	case "expired":
+		query = query.Where(
+			"(user_subscriptions.status = ? OR (user_subscriptions.status = ? AND user_subscriptions.end_time <= ?))",
+			"expired",
+			"active",
+			now,
+		)
+	case "cancelled":
+		query = query.Where("user_subscriptions.status = ?", "cancelled")
+	case "":
+	default:
+		query = query.Where("user_subscriptions.status = ?", status)
+	}
+
+	if keyword != "" {
+		like := "%" + keyword + "%"
+		if id, err := strconv.Atoi(keyword); err == nil {
+			query = query.Where(
+				"(users.id = ? OR users.username LIKE ? OR users.email LIKE ? OR users.display_name LIKE ?)",
+				id,
+				like,
+				like,
+				like,
+			)
+		} else {
+			query = query.Where(
+				"(users.username LIKE ? OR users.email LIKE ? OR users.display_name LIKE ?)",
+				like,
+				like,
+				like,
+			)
+		}
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var subs []UserSubscription
+	if err := query.
+		Select("user_subscriptions.*").
+		Order("user_subscriptions.end_time desc, user_subscriptions.id desc").
+		Offset(startIdx).
+		Limit(num).
+		Find(&subs).Error; err != nil {
+		return nil, 0, err
+	}
+	if len(subs) == 0 {
+		return []PlanUserSubscriptionRecord{}, total, nil
+	}
+
+	userIds := make([]int, 0, len(subs))
+	for _, sub := range subs {
+		userIds = append(userIds, sub.UserId)
+	}
+	var users []User
+	groupCol := commonGroupCol
+	if groupCol == "" {
+		groupCol = "group"
+	}
+	if err := DB.Select("id", "username", "display_name", "email", groupCol, "status", "created_at").
+		Where("id IN ?", userIds).
+		Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+	userById := make(map[int]*User, len(users))
+	for i := range users {
+		userCopy := users[i]
+		userById[userCopy.Id] = &userCopy
+	}
+
+	result := make([]PlanUserSubscriptionRecord, 0, len(subs))
+	for _, sub := range subs {
+		subCopy := sub
+		result = append(result, PlanUserSubscriptionRecord{
+			Subscription: &subCopy,
+			User:         userById[sub.UserId],
+		})
+	}
+	return result, total, nil
+}
+
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	if len(subs) == 0 {
 		return []SubscriptionSummary{}
@@ -896,6 +1516,49 @@ func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 		return fmt.Sprintf("用户分组将回退到 %s", downgradeGroup), nil
 	}
 	return "", nil
+}
+
+func CancelOrderUserSubscriptionForRefundTx(tx *gorm.DB, userId int, planId int, orderCompleteTime int64) (int, string, error) {
+	if tx == nil {
+		return 0, "", errors.New("tx is nil")
+	}
+	if userId <= 0 || planId <= 0 {
+		return 0, "", errors.New("invalid subscription refund target")
+	}
+	now := common.GetTimestamp()
+	baseTime := orderCompleteTime
+	if baseTime <= 0 {
+		baseTime = now
+	}
+	windowStart := baseTime - 60
+	if windowStart < 0 {
+		windowStart = 0
+	}
+	windowEnd := baseTime + 60
+	var sub UserSubscription
+	query := tx.Set("gorm:query_option", "FOR UPDATE").
+		Where("user_id = ? AND plan_id = ? AND status = ? AND source = ? AND start_time BETWEEN ? AND ?",
+			userId, planId, "active", SubscriptionSourceOrder, windowStart, windowEnd).
+		Order("id desc").
+		First(&sub)
+	if errors.Is(query.Error, gorm.ErrRecordNotFound) {
+		return 0, "", nil
+	}
+	if query.Error != nil {
+		return 0, "", query.Error
+	}
+	if err := tx.Model(&sub).Updates(map[string]interface{}{
+		"status":     "cancelled",
+		"end_time":   now,
+		"updated_at": now,
+	}).Error; err != nil {
+		return 0, "", err
+	}
+	target, err := downgradeUserGroupForSubscriptionTx(tx, &sub, now)
+	if err != nil {
+		return 0, "", err
+	}
+	return sub.Id, target, nil
 }
 
 // AdminDeleteUserSubscription hard-deletes a user subscription.
@@ -1095,7 +1758,7 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 }
 
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, group string) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1149,6 +1812,14 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			}
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
+			}
+			// 分组白名单检查：如果订阅计划指定了升级分组，则只允许对应分组的请求消耗该订阅额度
+			planGroup := strings.TrimSpace(plan.UpgradeGroup)
+			if planGroup != "" {
+				usingGroup := strings.TrimSpace(group)
+				if usingGroup == "" || !strings.EqualFold(planGroup, usingGroup) {
+					continue
+				}
 			}
 			usedBefore := sub.AmountUsed
 			if sub.AmountTotal > 0 {

@@ -23,6 +23,7 @@ type TopUp struct {
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
+	ProviderPayload string  `json:"-" gorm:"type:text"`
 }
 
 const (
@@ -32,6 +33,7 @@ const (
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodWechatPay    = "wechat_pay"
 	PaymentMethodAlipayDirect = "alipay_direct"
+	PaymentMethodCasdoor      = "casdoor"
 	PaymentMethodBalance      = "balance"
 )
 
@@ -43,6 +45,7 @@ const (
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderWechatPay    = "wechat_pay"
 	PaymentProviderAlipay       = "alipay"
+	PaymentProviderCasdoor      = "casdoor"
 	PaymentProviderBalance      = "balance"
 )
 
@@ -680,7 +683,15 @@ func RechargeAlipay(tradeNo string, callerIp string) error {
 	return rechargeDirectTopUp(tradeNo, callerIp, PaymentProviderAlipay, "支付宝")
 }
 
+func RechargeCasdoor(tradeNo string, providerPayload string, callerIp string) error {
+	return rechargeDirectTopUpWithPayload(tradeNo, callerIp, PaymentProviderCasdoor, "Casdoor", providerPayload)
+}
+
 func rechargeDirectTopUp(tradeNo string, callerIp string, expectedProvider string, displayName string) (err error) {
+	return rechargeDirectTopUpWithPayload(tradeNo, callerIp, expectedProvider, displayName, "")
+}
+
+func rechargeDirectTopUpWithPayload(tradeNo string, callerIp string, expectedProvider string, displayName string, providerPayload string) (err error) {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -718,6 +729,9 @@ func rechargeDirectTopUp(tradeNo string, callerIp string, expectedProvider strin
 
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
+		if providerPayload != "" {
+			topUp.ProviderPayload = providerPayload
+		}
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}

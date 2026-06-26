@@ -150,3 +150,23 @@ func isAlipayWebhookConfigured() bool {
 func isAlipayWebhookEnabled() bool {
 	return isAlipayTopUpEnabled()
 }
+
+func isCasdoorTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
+	if !setting.CasdoorPaymentEnabled {
+		return false
+	}
+	return strings.TrimSpace(setting.GetCasdoorBaseURL()) != "" &&
+		strings.TrimSpace(setting.CasdoorClientID) != "" &&
+		strings.TrimSpace(setting.CasdoorClientSecret) != "" &&
+		strings.TrimSpace(setting.CasdoorApplicationName) != "" &&
+		strings.TrimSpace(setting.GetCasdoorPaymentProduct()) != "" &&
+		strings.TrimSpace(setting.GetCasdoorPaymentProvider()) != "" &&
+		strings.TrimSpace(setting.GetCasdoorPaymentCurrency()) != ""
+}
+
+func isCasdoorWebhookEnabled() bool {
+	return isCasdoorTopUpEnabled()
+}

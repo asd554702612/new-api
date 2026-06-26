@@ -2,13 +2,13 @@ package oauth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
@@ -56,17 +56,20 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c *gin.Co
 	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken: code=%s...", code[:min(len(code), 10)])
 
 	settings := system_setting.GetOIDCSettings()
-	redirectUri := fmt.Sprintf("%s/oauth/oidc", system_setting.ServerAddress)
+	resolved, ok := settings.ResolveClientForRequest(c.Request)
+	if !ok {
+		return nil, NewOAuthError(i18n.MsgOAuthNotEnabled, map[string]any{"Provider": "OIDC"})
+	}
 	values := url.Values{}
-	values.Set("client_id", settings.ClientId)
-	values.Set("client_secret", settings.ClientSecret)
+	values.Set("client_id", resolved.ClientId)
+	values.Set("client_secret", resolved.ClientSecret)
 	values.Set("code", code)
 	values.Set("grant_type", "authorization_code")
-	values.Set("redirect_uri", redirectUri)
+	values.Set("redirect_uri", resolved.RedirectURI)
 
-	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken: token_endpoint=%s, redirect_uri=%s", settings.TokenEndpoint, redirectUri)
+	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken: token_endpoint=%s, redirect_uri=%s", resolved.TokenEndpoint, resolved.RedirectURI)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", settings.TokenEndpoint, strings.NewReader(values.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", resolved.TokenEndpoint, strings.NewReader(values.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +89,7 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c *gin.Co
 	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken response status: %d", res.StatusCode)
 
 	var oidcResponse oidcOAuthResponse
-	err = json.NewDecoder(res.Body).Decode(&oidcResponse)
+	err = common.DecodeJson(res.Body, &oidcResponse)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("[OAuth-OIDC] ExchangeToken decode error: %s", err.Error()))
 		return nil, err
@@ -100,21 +103,26 @@ func (p *OIDCProvider) ExchangeToken(ctx context.Context, code string, c *gin.Co
 	logger.LogDebug(ctx, "[OAuth-OIDC] ExchangeToken success: scope=%s", oidcResponse.Scope)
 
 	return &OAuthToken{
-		AccessToken:  oidcResponse.AccessToken,
-		TokenType:    oidcResponse.TokenType,
-		RefreshToken: oidcResponse.RefreshToken,
-		ExpiresIn:    oidcResponse.ExpiresIn,
-		Scope:        oidcResponse.Scope,
-		IDToken:      oidcResponse.IDToken,
+		AccessToken:      oidcResponse.AccessToken,
+		TokenType:        oidcResponse.TokenType,
+		RefreshToken:     oidcResponse.RefreshToken,
+		ExpiresIn:        oidcResponse.ExpiresIn,
+		Scope:            oidcResponse.Scope,
+		IDToken:          oidcResponse.IDToken,
+		UserInfoEndpoint: resolved.UserInfoEndpoint,
 	}, nil
 }
 
 func (p *OIDCProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*OAuthUser, error) {
 	settings := system_setting.GetOIDCSettings()
+	userInfoEndpoint := strings.TrimSpace(token.UserInfoEndpoint)
+	if userInfoEndpoint == "" {
+		userInfoEndpoint = settings.UserInfoEndpoint
+	}
 
-	logger.LogDebug(ctx, "[OAuth-OIDC] GetUserInfo: userinfo_endpoint=%s", settings.UserInfoEndpoint)
+	logger.LogDebug(ctx, "[OAuth-OIDC] GetUserInfo: userinfo_endpoint=%s", userInfoEndpoint)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", settings.UserInfoEndpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", userInfoEndpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +146,7 @@ func (p *OIDCProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*OAu
 	}
 
 	var oidcUser oidcUser
-	err = json.NewDecoder(res.Body).Decode(&oidcUser)
+	err = common.DecodeJson(res.Body, &oidcUser)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("[OAuth-OIDC] GetUserInfo decode error: %s", err.Error()))
 		return nil, err

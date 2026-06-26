@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,7 +64,7 @@ func RequestWechatPay(c *gin.Context) {
 		return
 	}
 
-	tradeNo := fmt.Sprintf("WXPAY-%d-%d-%s", id, time.Now().UnixMilli(), randstr.String(6))
+	tradeNo := newWechatPayTradeNo("WXPAY")
 	topUp := &model.TopUp{
 		UserId:          id,
 		Amount:          amount,
@@ -98,6 +99,7 @@ func RequestWechatPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败: " + err.Error()})
 		return
 	}
+	resp.TradeNo = tradeNo
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": resp})
 }
 
@@ -155,6 +157,7 @@ func RequestAlipay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
+	resp.TradeNo = tradeNo
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": resp})
 }
 
@@ -256,7 +259,7 @@ func SubscriptionRequestWechatPay(c *gin.Context) {
 		return
 	}
 
-	tradeNo := fmt.Sprintf("WXPAY-SUB-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(6))
+	tradeNo := newWechatPayTradeNo("WXSUB")
 	order := &model.SubscriptionOrder{
 		UserId:          user.Id,
 		PlanId:          plan.Id,
@@ -287,6 +290,7 @@ func SubscriptionRequestWechatPay(c *gin.Context) {
 		common.ApiErrorMsg(c, "拉起支付失败: "+err.Error())
 		return
 	}
+	resp.TradeNo = tradeNo
 	common.ApiSuccess(c, resp)
 }
 
@@ -343,17 +347,22 @@ func SubscriptionRequestAlipay(c *gin.Context) {
 		common.ApiErrorMsg(c, "拉起支付失败")
 		return
 	}
+	resp.TradeNo = tradeNo
 	common.ApiSuccess(c, resp)
 }
 
 func requestOfficialAmount(c *gin.Context, unitPrice float64) {
+	requestOfficialAmountWithMin(c, unitPrice, operation_setting.MinTopUp)
+}
+
+func requestOfficialAmountWithMin(c *gin.Context, unitPrice float64, minTopUp int) {
 	var req AmountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
 	id := c.GetInt("id")
-	_, payMoney, err := validateOfficialTopUpAmount(id, req.Amount, unitPrice)
+	_, payMoney, err := validateOfficialTopUpAmountWithMin(id, req.Amount, unitPrice, minTopUp)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 		return
@@ -362,8 +371,13 @@ func requestOfficialAmount(c *gin.Context, unitPrice float64) {
 }
 
 func validateOfficialTopUpAmount(userId int, reqAmount int64, unitPrice float64) (int64, float64, error) {
-	if reqAmount < getMinTopup() {
-		return 0, 0, fmt.Errorf("充值数量不能小于 %d", getMinTopup())
+	return validateOfficialTopUpAmountWithMin(userId, reqAmount, unitPrice, operation_setting.MinTopUp)
+}
+
+func validateOfficialTopUpAmountWithMin(userId int, reqAmount int64, unitPrice float64, minTopUp int) (int64, float64, error) {
+	minTopUpForDisplay := topUpMinForCurrentDisplay(minTopUp)
+	if reqAmount < minTopUpForDisplay {
+		return 0, 0, fmt.Errorf("充值数量不能小于 %d", minTopUpForDisplay)
 	}
 	group, err := model.GetUserGroup(userId, true)
 	if err != nil {
@@ -449,14 +463,8 @@ func prepareOfficialSubscription(c *gin.Context, planId int) (*model.Subscriptio
 	if err != nil || user == nil {
 		return nil, nil, 0, errors.New("用户不存在")
 	}
-	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
-		if err != nil {
-			return nil, nil, 0, err
-		}
-		if count >= int64(plan.MaxPurchasePerUser) {
-			return nil, nil, 0, errors.New("已达到该套餐购买上限")
-		}
+	if err := model.EnsureSubscriptionPlanAvailableForPurchaseTx(nil, userId, plan, time.Now()); err != nil {
+		return nil, nil, 0, err
 	}
 	return plan, user, payMoneyCNY, nil
 }
@@ -487,6 +495,18 @@ func parseYuanToCents(amount string) (int64, error) {
 		return 0, err
 	}
 	return d.Mul(decimal.NewFromInt(100)).Round(0).IntPart(), nil
+}
+
+func newWechatPayTradeNo(prefix string) string {
+	safePrefix := strings.ToUpper(strings.TrimSpace(prefix))
+	if safePrefix == "" {
+		safePrefix = "WXPAY"
+	}
+	if len(safePrefix) > 5 {
+		safePrefix = safePrefix[:5]
+	}
+	now := strconv.FormatInt(time.Now().UnixNano(), 36)
+	return fmt.Sprintf("%s-%s-%s", safePrefix, now, randstr.String(10))
 }
 
 func officialNotifyURL(override string, path string) string {

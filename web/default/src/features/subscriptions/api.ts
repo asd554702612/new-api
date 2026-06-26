@@ -19,8 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 import type {
   ApiResponse,
+  PageInfo,
   PlanRecord,
   PlanPayload,
+  PlanSubscriptionRecord,
+  PlanSubscriptionStatusFilter,
   UserSubscriptionRecord,
   CreateUserSubscriptionRequest,
   SubscriptionPayResponse,
@@ -59,6 +62,27 @@ export async function patchPlanStatus(
   const res = await api.patch(`/api/subscription/admin/plans/${id}`, {
     enabled,
   })
+  return res.data
+}
+
+export async function getPlanSubscriptions(params: {
+  planId: number
+  page: number
+  pageSize: number
+  status?: PlanSubscriptionStatusFilter
+  keyword?: string
+}): Promise<ApiResponse<PageInfo<PlanSubscriptionRecord>>> {
+  const res = await api.get(
+    `/api/subscription/admin/plans/${params.planId}/subscriptions`,
+    {
+      params: {
+        p: params.page,
+        page_size: params.pageSize,
+        status: params.status === 'all' ? undefined : params.status,
+        keyword: params.keyword || undefined,
+      },
+    }
+  )
   return res.data
 }
 

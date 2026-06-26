@@ -133,7 +133,12 @@ const AdminOrders = () => {
         values,
       );
       if (res.data.success) {
-        Toast.success({ content: t('退款已登记') });
+        const refundNo = res.data.data?.provider_refund_no;
+        Toast.success({
+          content: refundNo
+            ? `${t('退款已发起')}: ${refundNo}`
+            : t('退款已发起'),
+        });
         setRefundVisible(false);
         loadOrders();
       } else {

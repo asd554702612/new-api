@@ -600,3 +600,211 @@ func TestAffiliateAdminRecordQueriesIncludeUserInfoAndFilters(t *testing.T) {
 	require.Len(t, withdrawals, 1)
 	assert.Equal(t, "inviter@example.com", withdrawals[0].Email)
 }
+
+func TestAffiliateInviterAndInviteeDetailQueries(t *testing.T) {
+	truncateTables(t)
+	resetAffiliateSettingsForTest(t)
+
+	insertAffiliateUserForTest(t, 551, "admin-aff-summary-inviter", 0)
+	insertAffiliateUserForTest(t, 552, "admin-aff-summary-invitee", 551)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", 551).Updates(map[string]any{
+		"email":       "summary-inviter@example.com",
+		"aff_count":   1,
+		"aff_history": int(3 * common.QuotaPerUnit),
+	}).Error)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", 552).Updates(map[string]any{
+		"email": "summary-invitee@example.com",
+	}).Error)
+	require.NoError(t, DB.Create(&AffiliateLedger{
+		UserId:        551,
+		RelatedUserId: 552,
+		Action:        AffiliateLedgerActionAccrue,
+		Quota:         int(common.QuotaPerUnit),
+	}).Error)
+	require.NoError(t, DB.Create(&AffiliateLedger{
+		UserId:        551,
+		RelatedUserId: 552,
+		Action:        AffiliateLedgerActionSignupBonus,
+		Quota:         int(common.QuotaPerUnit / 2),
+	}).Error)
+	require.NoError(t, DB.Create(&AffiliateSignupFingerprint{
+		UserId:         552,
+		CompositeHash:  "same-device",
+		DuplicateCount: 3,
+		RiskFlagged:    true,
+		RiskReason:     "duplicate_fingerprint",
+	}).Error)
+	require.NoError(t, DB.Create(&AffiliateIdentity{
+		UserId:         551,
+		IdentityType:   AffiliateIdentityTypeInviter,
+		RateMultiplier: 1.2,
+		GrantedAt:      time.Now().Unix(),
+		ExpiresAt:      time.Now().Add(time.Hour).Unix(),
+		Status:         AffiliateIdentityStatusActive,
+	}).Error)
+	require.NoError(t, DB.Create(&AffiliateIdentity{
+		UserId:          552,
+		IdentityType:    AffiliateIdentityTypeInvitee,
+		RateMultiplier:  1.1,
+		SourceInviterId: 551,
+		GrantedAt:       time.Now().Unix(),
+		ExpiresAt:       time.Now().Add(time.Hour).Unix(),
+		Status:          AffiliateIdentityStatusActive,
+	}).Error)
+
+	common.AffiliateIdentityEnabled = true
+	pageInfo := &common.PageInfo{Page: 1, PageSize: 20}
+	inviters, inviterTotal, err := GetAffiliateInviterRecords(pageInfo, AffiliateRecordFilter{Search: "summary-inviter@example.com"})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), inviterTotal)
+	require.Len(t, inviters, 1)
+	assert.Equal(t, 551, inviters[0].UserId)
+	assert.Equal(t, int(3*common.QuotaPerUnit), inviters[0].AffHistoryQuota)
+	assert.Equal(t, AffiliateIdentityStatusActive, inviters[0].IdentityStatus)
+	assert.Equal(t, 1.2, inviters[0].RateMultiplier)
+
+	invitees, inviteeTotal, err := GetAffiliateInviteeDetails(551, pageInfo, AffiliateRecordFilter{Search: "summary-invitee@example.com"})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), inviteeTotal)
+	require.Len(t, invitees, 1)
+	assert.Equal(t, 552, invitees[0].UserId)
+	assert.Equal(t, int(common.QuotaPerUnit+common.QuotaPerUnit/2), invitees[0].CumulativeRebateQuota)
+	assert.True(t, invitees[0].RiskFlagged)
+	assert.Equal(t, "duplicate_fingerprint", invitees[0].RiskReason)
+	assert.Equal(t, AffiliateIdentityStatusActive, invitees[0].IdentityStatus)
+	assert.Equal(t, 1.1, invitees[0].RateMultiplier)
+}
+
+func TestAffiliateAdminSorting(t *testing.T) {
+	truncateTables(t)
+	resetAffiliateSettingsForTest(t)
+
+	now := time.Now().Unix()
+	inviters := []User{
+		{
+			Id:              561,
+			Username:        "sort-inviter-old",
+			Email:           "sort-inviter-old@example.com",
+			Status:          common.UserStatusEnabled,
+			AffCode:         "SORTOLD",
+			AffCount:        2,
+			AffHistoryQuota: int(common.QuotaPerUnit),
+			CreatedAt:       now - 300,
+		},
+		{
+			Id:              562,
+			Username:        "sort-inviter-many",
+			Email:           "sort-inviter-many@example.com",
+			Status:          common.UserStatusEnabled,
+			AffCode:         "SORTMANY",
+			AffCount:        7,
+			AffHistoryQuota: int(common.QuotaPerUnit / 2),
+			CreatedAt:       now - 200,
+		},
+		{
+			Id:              563,
+			Username:        "sort-inviter-rich",
+			Email:           "sort-inviter-rich@example.com",
+			Status:          common.UserStatusEnabled,
+			AffCode:         "SORTRICH",
+			AffCount:        1,
+			AffHistoryQuota: int(3 * common.QuotaPerUnit),
+			CreatedAt:       now - 100,
+		},
+	}
+	for _, inviter := range inviters {
+		require.NoError(t, DB.Create(&inviter).Error)
+	}
+
+	pageInfo := &common.PageInfo{Page: 1, PageSize: 20}
+	records, total, err := GetAffiliateInviterRecords(pageInfo, AffiliateRecordFilter{
+		SortBy:    "aff_count",
+		SortOrder: "desc",
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, records, 3)
+	assert.Equal(t, []int{562, 561, 563}, []int{records[0].UserId, records[1].UserId, records[2].UserId})
+
+	records, total, err = GetAffiliateInviterRecords(pageInfo, AffiliateRecordFilter{
+		SortBy:    "aff_history_quota",
+		SortOrder: "desc",
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, records, 3)
+	assert.Equal(t, []int{563, 561, 562}, []int{records[0].UserId, records[1].UserId, records[2].UserId})
+
+	records, total, err = GetAffiliateInviterRecords(pageInfo, AffiliateRecordFilter{
+		SortBy:    "created_at",
+		SortOrder: "desc",
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, records, 3)
+	assert.Equal(t, []int{563, 562, 561}, []int{records[0].UserId, records[1].UserId, records[2].UserId})
+
+	records, total, err = GetAffiliateInviterRecords(pageInfo, AffiliateRecordFilter{
+		SortBy:    "u.id;drop table users",
+		SortOrder: "asc",
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, records, 3)
+	assert.Equal(t, []int{563, 562, 561}, []int{records[0].UserId, records[1].UserId, records[2].UserId})
+}
+
+func TestAffiliateRecordDefaultSortingIsLatestFirst(t *testing.T) {
+	truncateTables(t)
+	resetAffiliateSettingsForTest(t)
+
+	now := time.Now().Unix()
+	insertAffiliateUserForTest(t, 571, "record-sort-user", 0)
+	require.NoError(t, DB.Create(&AffiliateLedger{
+		Id:        5711,
+		UserId:    571,
+		Action:    AffiliateLedgerActionAccrue,
+		Quota:     int(common.QuotaPerUnit),
+		CreatedAt: now - 100,
+	}).Error)
+	require.NoError(t, DB.Create(&AffiliateLedger{
+		Id:        5712,
+		UserId:    571,
+		Action:    AffiliateLedgerActionAccrue,
+		Quota:     int(common.QuotaPerUnit / 2),
+		CreatedAt: now,
+	}).Error)
+	require.NoError(t, DB.Create(&AffiliateWithdrawal{
+		Id:                5713,
+		UserId:            571,
+		Quota:             int(common.QuotaPerUnit),
+		Status:            AffiliateWithdrawalStatusPendingReview,
+		PayoutMethod:      AffiliateWithdrawalPayoutMethodWechatManual,
+		PayoutAccountNote: "wechat",
+		CreatedAt:         now - 100,
+	}).Error)
+	require.NoError(t, DB.Create(&AffiliateWithdrawal{
+		Id:                5714,
+		UserId:            571,
+		Quota:             int(common.QuotaPerUnit / 2),
+		Status:            AffiliateWithdrawalStatusApproved,
+		PayoutMethod:      AffiliateWithdrawalPayoutMethodWechatManual,
+		PayoutAccountNote: "wechat",
+		CreatedAt:         now,
+	}).Error)
+
+	pageInfo := &common.PageInfo{Page: 1, PageSize: 20}
+	rebates, rebateTotal, err := GetAffiliateRebateLedgers(pageInfo, AffiliateRecordFilter{})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), rebateTotal)
+	require.Len(t, rebates, 2)
+	assert.Equal(t, 5712, rebates[0].Id)
+	assert.Equal(t, 5711, rebates[1].Id)
+
+	withdrawals, withdrawalTotal, err := GetAffiliateWithdrawalRecords(pageInfo, AffiliateRecordFilter{})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), withdrawalTotal)
+	require.Len(t, withdrawals, 2)
+	assert.Equal(t, 5714, withdrawals[0].Id)
+	assert.Equal(t, 5713, withdrawals[1].Id)
+}

@@ -51,6 +51,9 @@ export const useModelPricingData = () => {
   const [usableGroup, setUsableGroup] = useState({});
   const [endpointMap, setEndpointMap] = useState({});
   const [autoGroups, setAutoGroups] = useState([]);
+  const [modelSquareSelectionEnabled, setModelSquareSelectionEnabled] =
+    useState(false);
+  const [selectionSaving, setSelectionSaving] = useState(false);
 
   const [statusState] = useContext(StatusContext);
   const [userState] = useContext(UserContext);
@@ -223,6 +226,9 @@ export const useModelPricingData = () => {
     });
 
     setModels(models);
+    setSelectedRowKeys(
+      models.filter((model) => model.selected).map((model) => model.model_name),
+    );
   };
 
   const loadPricing = async () => {
@@ -238,6 +244,7 @@ export const useModelPricingData = () => {
       usable_group,
       supported_endpoint,
       auto_groups,
+      model_square,
     } = res.data;
     if (success) {
       setGroupRatio(group_ratio);
@@ -253,6 +260,9 @@ export const useModelPricingData = () => {
       setVendorsMap(vendorMap);
       setEndpointMap(supported_endpoint || {});
       setAutoGroups(auto_groups || []);
+      setModelSquareSelectionEnabled(
+        model_square?.selection_enabled === true,
+      );
       setModelsFormat(data, group_ratio, vendorMap);
     } else {
       showError(message);
@@ -262,6 +272,33 @@ export const useModelPricingData = () => {
 
   const refresh = async () => {
     await loadPricing();
+  };
+
+  const saveModelSelections = async () => {
+    setSelectionSaving(true);
+    try {
+      const res = await API.put('/api/user/model_selections', {
+        models: selectedRowKeys,
+      });
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message || t('保存失败'));
+        return;
+      }
+      const selectedSet = new Set(data || []);
+      setSelectedRowKeys(data || []);
+      setModels((currentModels) =>
+        currentModels.map((model) => ({
+          ...model,
+          selected: selectedSet.has(model.model_name),
+        })),
+      );
+      showSuccess(t('模型选择已保存'));
+    } catch (error) {
+      showError(t('保存失败'));
+    } finally {
+      setSelectionSaving(false);
+    }
   };
 
   const copyText = async (text) => {
@@ -374,6 +411,8 @@ export const useModelPricingData = () => {
     usableGroup,
     endpointMap,
     autoGroups,
+    modelSquareSelectionEnabled,
+    selectionSaving,
 
     // 计算属性
     priceRate,
@@ -391,6 +430,7 @@ export const useModelPricingData = () => {
     // 方法
     displayPrice,
     refresh,
+    saveModelSelections,
     copyText,
     handleChange,
     handleCompositionStart,

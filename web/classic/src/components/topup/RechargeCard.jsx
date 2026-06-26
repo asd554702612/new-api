@@ -54,6 +54,7 @@ import {
   isAlipayDirectPayment,
   isWechatPayPayment,
 } from '../../helpers/officialPayment';
+import { normalizeCurrencyDelta } from './format';
 
 const { Text } = Typography;
 
@@ -73,6 +74,7 @@ const RechargeCard = ({
   minTopUp,
   renderQuotaWithAmount,
   getAmount,
+  getPresetAmount,
   setTopUpCount,
   setSelectedPreset,
   renderAmount,
@@ -96,6 +98,7 @@ const RechargeCard = ({
   enableWaffoPancakeTopUp,
   enableWechatPayTopUp = false,
   enableAlipayTopUp = false,
+  enableCasdoorTopUp = false,
   subscriptionLoading = false,
   subscriptionPlans = [],
   billingPreference,
@@ -103,6 +106,7 @@ const RechargeCard = ({
   activeSubscriptions = [],
   allSubscriptions = [],
   reloadSubscriptionSelf,
+  reloadUserQuota,
   enableRedemption = true,
 }) => {
   const onlineFormApiRef = useRef(null);
@@ -111,6 +115,7 @@ const RechargeCard = ({
   const showAmountSkeleton = useMinimumLoadingTime(amountLoading);
   const actualTheme = useActualTheme();
   const [activeTab, setActiveTab] = useState('topup');
+  const [presetPayAmounts, setPresetPayAmounts] = useState({});
   const shouldShowSubscription =
     !subscriptionLoading && subscriptionPlans.length > 0;
   const regularPayMethods = payMethods || [];
@@ -127,6 +132,39 @@ const RechargeCard = ({
       setActiveTab('topup');
     }
   }, [shouldShowSubscription, activeTab]);
+
+  useEffect(() => {
+    if (!getPresetAmount || !presetAmounts.length) {
+      setPresetPayAmounts({});
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadPresetAmounts = async () => {
+      const nextAmounts = {};
+      await Promise.all(
+        presetAmounts.map(async (preset) => {
+          try {
+            const payAmount = await getPresetAmount(preset.value);
+            if (Number.isFinite(payAmount)) {
+              nextAmounts[preset.value] = payAmount;
+            }
+          } catch (error) {
+            // Individual preset amount failures should not block the wallet page.
+          }
+        }),
+      );
+      if (!cancelled) {
+        setPresetPayAmounts(nextAmounts);
+      }
+    };
+
+    loadPresetAmounts();
+    return () => {
+      cancelled = true;
+    };
+  }, [getPresetAmount, presetAmounts]);
+
   const topupContent = (
     <Space vertical style={{ width: '100%' }}>
       {/* 统计数据 */}
@@ -242,7 +280,8 @@ const RechargeCard = ({
           enableWaffoTopUp ||
           enableWaffoPancakeTopUp ||
           enableWechatPayTopUp ||
-          enableAlipayTopUp ? (
+          enableAlipayTopUp ||
+          enableCasdoorTopUp ? (
           <Form
             getFormApi={(api) => (onlineFormApiRef.current = api)}
             initValues={{ topUpCount: topUpCount }}
@@ -253,20 +292,14 @@ const RechargeCard = ({
                 enableWaffoTopUp ||
                 enableWaffoPancakeTopUp ||
                 enableWechatPayTopUp ||
-                enableAlipayTopUp) && (
+                enableAlipayTopUp ||
+                enableCasdoorTopUp) && (
                 <Row gutter={12}>
                   <Col xs={24} sm={24} md={24} lg={10} xl={10}>
                     <Form.InputNumber
                       field='topUpCount'
                       label={t('充值数量')}
-                      disabled={
-                        !enableOnlineTopUp &&
-                        !enableStripeTopUp &&
-                        !enableWaffoTopUp &&
-                        !enableWaffoPancakeTopUp &&
-                        !enableWechatPayTopUp &&
-                        !enableAlipayTopUp
-                      }
+                      disabled
                       placeholder={
                         t('充值数量，最低 ') + renderQuotaWithAmount(minTopUp)
                       }
@@ -337,18 +370,21 @@ const RechargeCard = ({
                             const isAlipayDirect = isAlipayDirectPayment(
                               payMethod.type,
                             );
+                            const isCasdoor = payMethod.type === 'casdoor';
                             const disabled =
                               (!enableOnlineTopUp &&
                                 !isStripe &&
                                 !isWaffo &&
                                 !isWaffoPancake &&
                                 !isWechatPay &&
-                                !isAlipayDirect) ||
+                                !isAlipayDirect &&
+                                !isCasdoor) ||
                               (!enableStripeTopUp && isStripe) ||
                               (!enableWaffoTopUp && isWaffo) ||
                               (!enableWaffoPancakeTopUp && isWaffoPancake) ||
                               (!enableWechatPayTopUp && isWechatPay) ||
                               (!enableAlipayTopUp && isAlipayDirect) ||
+                              (!enableCasdoorTopUp && isCasdoor) ||
                               minTopupVal > Number(topUpCount || 0);
 
                             const buttonEl = (
@@ -439,7 +475,8 @@ const RechargeCard = ({
                 enableStripeTopUp ||
                 enableWaffoTopUp ||
                 enableWechatPayTopUp ||
-                enableAlipayTopUp) && (
+                enableAlipayTopUp ||
+                enableCasdoorTopUp) && (
                 <Form.Slot
                   label={
                     <div className='flex items-center gap-2'>
@@ -470,38 +507,32 @@ const RechargeCard = ({
                         topupInfo?.discount?.[preset.value] ||
                         1.0;
                       const originalPrice = preset.value * priceRatio;
-                      const discountedPrice = originalPrice * discount;
+                      const presetPayAmount = presetPayAmounts[preset.value];
+                      const discountedPrice = Number.isFinite(presetPayAmount)
+                        ? presetPayAmount
+                        : originalPrice * discount;
                       const hasDiscount = discount < 1.0;
                       const actualPay = discountedPrice;
-                      const save = originalPrice - discountedPrice;
+                      const save = normalizeCurrencyDelta(
+                        Number.isFinite(presetPayAmount) && !hasDiscount
+                          ? 0
+                          : originalPrice - discountedPrice,
+                      );
 
                       // 根据当前货币类型换算显示金额和数量
                       const { symbol, rate, type } = getCurrencyConfig();
-                      const statusStr = localStorage.getItem('status');
-                      let usdRate = 7; // 默认CNY汇率
-                      try {
-                        if (statusStr) {
-                          const s = JSON.parse(statusStr);
-                          usdRate = s?.usd_exchange_rate || 7;
-                        }
-                      } catch (e) {}
+                      const paySymbol = '¥';
 
                       let displayValue = preset.value; // 显示的数量
                       let displayActualPay = actualPay;
                       let displaySave = save;
 
-                      if (type === 'USD') {
-                        // 数量保持USD，价格从CNY转USD
-                        displayActualPay = actualPay / usdRate;
-                        displaySave = save / usdRate;
-                      } else if (type === 'CNY') {
-                        // 数量转CNY，价格已是CNY
-                        displayValue = preset.value * usdRate;
-                      } else if (type === 'CUSTOM') {
-                        // 数量和价格都转自定义货币
+                      if (type === 'CNY') {
+                        // 额度按展示货币换算，实付金额保持支付渠道返回的人民币。
                         displayValue = preset.value * rate;
-                        displayActualPay = (actualPay / usdRate) * rate;
-                        displaySave = (save / usdRate) * rate;
+                      } else if (type === 'CUSTOM') {
+                        // 额度按展示货币换算，实付金额保持支付渠道返回的人民币。
+                        displayValue = preset.value * rate;
                       }
 
                       return (
@@ -551,11 +582,11 @@ const RechargeCard = ({
                                 margin: '4px 0',
                               }}
                             >
-                              {t('实付')} {symbol}
+                              {t('实付')} {paySymbol}
                               {displayActualPay.toFixed(2)}，
                               {hasDiscount
-                                ? `${t('节省')} ${symbol}${displaySave.toFixed(2)}`
-                                : `${t('节省')} ${symbol}0.00`}
+                                ? `${t('节省')} ${paySymbol}${displaySave.toFixed(2)}`
+                                : `${t('节省')} ${paySymbol}0.00`}
                             </div>
                           </div>
                         </Card>
@@ -709,17 +740,20 @@ const RechargeCard = ({
                 t={t}
                 loading={subscriptionLoading}
                 plans={subscriptionPlans}
+                userQuota={userState?.user?.quota || 0}
                 payMethods={payMethods}
                 enableOnlineTopUp={enableOnlineTopUp}
                 enableStripeTopUp={enableStripeTopUp}
                 enableCreemTopUp={enableCreemTopUp}
                 enableWechatPayTopUp={enableWechatPayTopUp}
                 enableAlipayTopUp={enableAlipayTopUp}
+                enableCasdoorTopUp={enableCasdoorTopUp}
                 billingPreference={billingPreference}
                 onChangeBillingPreference={onChangeBillingPreference}
                 activeSubscriptions={activeSubscriptions}
                 allSubscriptions={allSubscriptions}
                 reloadSubscriptionSelf={reloadSubscriptionSelf}
+                reloadUserQuota={reloadUserQuota}
                 withCard={false}
               />
             </div>

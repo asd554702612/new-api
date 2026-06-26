@@ -68,7 +68,7 @@ func InitOptionMap() {
 	common.OptionMap["SMTPToken"] = ""
 	common.OptionMap["SMTPSSLEnabled"] = strconv.FormatBool(common.SMTPSSLEnabled)
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
-	common.OptionMap["SMSIHuyiEnabled"] = "false"
+	common.OptionMap["SMSIHuyiEnabled"] = "true"
 	common.OptionMap["SMSIHuyiAPIID"] = ""
 	common.OptionMap["SMSIHuyiAPIKey"] = ""
 	common.OptionMap["SMSIHuyiTemplateID"] = "309190"
@@ -148,6 +148,16 @@ func InitOptionMap() {
 	common.OptionMap["AlipayPageEnabled"] = strconv.FormatBool(setting.AlipayPageEnabled)
 	common.OptionMap["AlipayWapEnabled"] = strconv.FormatBool(setting.AlipayWapEnabled)
 	common.OptionMap["AlipayFaceEnabled"] = strconv.FormatBool(setting.AlipayFaceEnabled)
+	common.OptionMap["CasdoorPaymentEnabled"] = strconv.FormatBool(setting.CasdoorPaymentEnabled)
+	common.OptionMap["CasdoorBaseURL"] = setting.GetCasdoorBaseURL()
+	common.OptionMap["CasdoorClientID"] = setting.CasdoorClientID
+	common.OptionMap["CasdoorClientSecret"] = setting.CasdoorClientSecret
+	common.OptionMap["CasdoorApplicationName"] = setting.CasdoorApplicationName
+	common.OptionMap["CasdoorPaymentProduct"] = setting.GetCasdoorPaymentProduct()
+	common.OptionMap["CasdoorPaymentProvider"] = setting.GetCasdoorPaymentProvider()
+	common.OptionMap["CasdoorPaymentCurrency"] = setting.GetCasdoorPaymentCurrency()
+	common.OptionMap["CasdoorPaymentUnitPrice"] = strconv.FormatFloat(setting.CasdoorPaymentUnitPrice, 'f', -1, 64)
+	common.OptionMap["CasdoorPaymentMinTopUp"] = strconv.Itoa(setting.GetCasdoorPaymentMinTopUp())
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -217,6 +227,10 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
+	modelSquareSettings := system_setting.GetModelSquareSettings()
+	common.OptionMap["ModelSquareSelectionEnabled"] = strconv.FormatBool(modelSquareSettings.SelectionEnabled)
+	common.OptionMap["ModelSquareEnvironment"] = modelSquareSettings.Environment
+	common.OptionMap["ModelSquareDomesticDenyRules"] = modelSquareSettings.DomesticDenyRules
 	common.OptionMap[OptionKeyUsageLeaderboardIgnoredUserIds] = "[]"
 
 	// 自动添加所有注册的模型配置
@@ -424,6 +438,10 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.DefaultUseAutoGroup = boolValue
 		case "ExposeRatioEnabled":
 			ratio_setting.SetExposeRatioEnabled(boolValue)
+		case "ModelSquareSelectionEnabled":
+			settings := system_setting.GetModelSquareSettings()
+			settings.SelectionEnabled = boolValue
+			system_setting.SetModelSquareSettings(settings)
 		case "WechatPayEnabled":
 			setting.WechatPayEnabled = boolValue
 		case "WechatPayJSAPIEnabled":
@@ -442,6 +460,8 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.AlipayWapEnabled = boolValue
 		case "AlipayFaceEnabled":
 			setting.AlipayFaceEnabled = boolValue
+		case "CasdoorPaymentEnabled":
+			setting.CasdoorPaymentEnabled = boolValue
 		}
 	}
 	switch key {
@@ -460,6 +480,14 @@ func updateOptionMap(key string, value string) (err error) {
 		common.SMTPToken = value
 	case "ServerAddress":
 		system_setting.ServerAddress = value
+	case "ModelSquareEnvironment":
+		settings := system_setting.GetModelSquareSettings()
+		settings.Environment = value
+		system_setting.SetModelSquareSettings(settings)
+	case "ModelSquareDomesticDenyRules":
+		settings := system_setting.GetModelSquareSettings()
+		settings.DomesticDenyRules = value
+		system_setting.SetModelSquareSettings(settings)
 	case "WorkerUrl":
 		system_setting.WorkerUrl = value
 	case "WorkerValidKey":
@@ -578,6 +606,24 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.AlipayNotifyURL = value
 	case "AlipayReturnURL":
 		setting.AlipayReturnURL = value
+	case "CasdoorBaseURL":
+		setting.CasdoorBaseURL = strings.TrimRight(strings.TrimSpace(value), "/")
+	case "CasdoorClientID":
+		setting.CasdoorClientID = value
+	case "CasdoorClientSecret":
+		setting.CasdoorClientSecret = value
+	case "CasdoorApplicationName":
+		setting.CasdoorApplicationName = value
+	case "CasdoorPaymentProduct":
+		setting.CasdoorPaymentProduct = value
+	case "CasdoorPaymentProvider":
+		setting.CasdoorPaymentProvider = value
+	case "CasdoorPaymentCurrency":
+		setting.CasdoorPaymentCurrency = strings.ToUpper(strings.TrimSpace(value))
+	case "CasdoorPaymentUnitPrice":
+		setting.CasdoorPaymentUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "CasdoorPaymentMinTopUp":
+		setting.CasdoorPaymentMinTopUp, _ = strconv.Atoi(value)
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":
@@ -701,11 +747,21 @@ func updateOptionMap(key string, value string) (err error) {
 }
 
 func validateOptionValue(key string, value string) error {
-	if key != OptionKeyUsageLeaderboardIgnoredUserIds {
-		return nil
+	switch key {
+	case OptionKeyUsageLeaderboardIgnoredUserIds:
+		_, err := normalizeUsageLeaderboardIgnoredUserIds(value)
+		return err
+	case "ModelSquareSelectionEnabled":
+		if value != "true" && value != "false" {
+			return fmt.Errorf("invalid ModelSquareSelectionEnabled value: %s", value)
+		}
+	case "ModelSquareEnvironment":
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value != system_setting.ModelSquareEnvironmentOverseas && value != system_setting.ModelSquareEnvironmentDomestic {
+			return fmt.Errorf("invalid ModelSquareEnvironment value: %s", value)
+		}
 	}
-	_, err := normalizeUsageLeaderboardIgnoredUserIds(value)
-	return err
+	return nil
 }
 
 func GetUsageLeaderboardIgnoredUserIds() []int {
@@ -772,6 +828,9 @@ func handleConfigUpdate(key, value string) bool {
 	} else if configName == "tool_price_setting" {
 		operation_setting.RebuildToolPriceIndex()
 	} else if configName == "billing_setting" {
+		InvalidatePricingCache()
+		ratio_setting.InvalidateExposedDataCache()
+	} else if configName == "video_billing_setting" {
 		InvalidatePricingCache()
 		ratio_setting.InvalidateExposedDataCache()
 	} else if configName == "theme" {

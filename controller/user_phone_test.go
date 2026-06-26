@@ -22,6 +22,7 @@ import (
 type userPhoneAPIResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	Data    any    `json:"data"`
 }
 
 func setupUserPhoneControllerTestDB(t *testing.T) *gorm.DB {
@@ -157,6 +158,56 @@ func TestSMSLoginWithCorrectCodeSucceeds(t *testing.T) {
 	require.True(t, response.Success, response.Message)
 }
 
+func TestPasswordLoginWithPhoneRequiresSMSWhenPhoneVerificationEnabled(t *testing.T) {
+	setupUserPhoneControllerTestDB(t)
+	createPhoneTestUser(t, "alice", "password123", "13800138000")
+	router := newUserPhoneRouter(t, 0)
+	router.POST("/api/user/login", Login)
+
+	recorder := performUserPhoneJSON(t, router, http.MethodPost, "/api/user/login", gin.H{
+		"username": "13800138000",
+		"password": "password123",
+	})
+
+	response := decodeUserPhoneAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	require.Contains(t, response.Message, "短信验证码")
+}
+
+func TestPasswordLoginWithUsernameStillSucceedsWhenPhoneVerificationEnabled(t *testing.T) {
+	setupUserPhoneControllerTestDB(t)
+	createPhoneTestUser(t, "alice", "password123", "13800138000")
+	router := newUserPhoneRouter(t, 0)
+	router.POST("/api/user/login", Login)
+
+	recorder := performUserPhoneJSON(t, router, http.MethodPost, "/api/user/login", gin.H{
+		"username": "alice",
+		"password": "password123",
+	})
+
+	response := decodeUserPhoneAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+}
+
+func TestPasswordLoginWithPhoneSucceedsWhenPhoneVerificationDisabled(t *testing.T) {
+	setupUserPhoneControllerTestDB(t)
+	common.PhoneVerificationEnabled = false
+	t.Cleanup(func() {
+		common.PhoneVerificationEnabled = true
+	})
+	createPhoneTestUser(t, "alice", "password123", "13800138000")
+	router := newUserPhoneRouter(t, 0)
+	router.POST("/api/user/login", Login)
+
+	recorder := performUserPhoneJSON(t, router, http.MethodPost, "/api/user/login", gin.H{
+		"username": "13800138000",
+		"password": "password123",
+	})
+
+	response := decodeUserPhoneAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+}
+
 func TestUpdateSelfBindsPhoneWithVerificationCode(t *testing.T) {
 	setupUserPhoneControllerTestDB(t)
 	user := createPhoneTestUser(t, "alice", "password123", "")
@@ -198,4 +249,126 @@ func TestUpdateSelfChangesPasswordWithPhoneVerificationCode(t *testing.T) {
 	var updated model.User
 	require.NoError(t, model.DB.Where("id = ?", user.Id).First(&updated).Error)
 	require.True(t, common.ValidatePasswordAndHash("newpassword", updated.Password))
+}
+
+func TestResetPasswordWithPhoneVerificationCodeSucceeds(t *testing.T) {
+	setupUserPhoneControllerTestDB(t)
+	user := createPhoneTestUser(t, "alice", "password123", "13800138000")
+	router := newUserPhoneRouter(t, 0)
+	router.POST("/api/user/reset", ResetPassword)
+	common.RegisterVerificationCodeWithKey("+8613800138000", "123456", common.PhoneVerificationPurposePasswordReset)
+
+	recorder := performUserPhoneJSON(t, router, http.MethodPost, "/api/user/reset", gin.H{
+		"phone_number": "13800138000",
+		"sms_code":     "123456",
+		"password":     "newpassword",
+	})
+
+	response := decodeUserPhoneAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var updated model.User
+	require.NoError(t, model.DB.Where("id = ?", user.Id).First(&updated).Error)
+	require.True(t, common.ValidatePasswordAndHash("newpassword", updated.Password))
+	require.False(t, common.ValidatePasswordAndHash("password123", updated.Password))
+}
+
+func TestResetPasswordWithPhoneVerificationRejectsWrongCode(t *testing.T) {
+	setupUserPhoneControllerTestDB(t)
+	user := createPhoneTestUser(t, "alice", "password123", "13800138000")
+	router := newUserPhoneRouter(t, 0)
+	router.POST("/api/user/reset", ResetPassword)
+	common.RegisterVerificationCodeWithKey("+8613800138000", "123456", common.PhoneVerificationPurposePasswordReset)
+
+	recorder := performUserPhoneJSON(t, router, http.MethodPost, "/api/user/reset", gin.H{
+		"phone_number": "13800138000",
+		"sms_code":     "000000",
+		"password":     "newpassword",
+	})
+
+	response := decodeUserPhoneAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	var updated model.User
+	require.NoError(t, model.DB.Where("id = ?", user.Id).First(&updated).Error)
+	require.True(t, common.ValidatePasswordAndHash("password123", updated.Password))
+}
+
+func TestResetPasswordWithPhoneVerificationRejectsShortPassword(t *testing.T) {
+	setupUserPhoneControllerTestDB(t)
+	createPhoneTestUser(t, "alice", "password123", "13800138000")
+	router := newUserPhoneRouter(t, 0)
+	router.POST("/api/user/reset", ResetPassword)
+	common.RegisterVerificationCodeWithKey("+8613800138000", "123456", common.PhoneVerificationPurposePasswordReset)
+
+	recorder := performUserPhoneJSON(t, router, http.MethodPost, "/api/user/reset", gin.H{
+		"phone_number": "13800138000",
+		"sms_code":     "123456",
+		"password":     "short",
+	})
+
+	response := decodeUserPhoneAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	require.Contains(t, response.Message, "密码")
+}
+
+func TestSendPasswordResetPhoneVerificationDoesNotRevealUnregisteredPhone(t *testing.T) {
+	setupUserPhoneControllerTestDB(t)
+	router := newUserPhoneRouter(t, 0)
+	router.POST("/api/user/phone/verification", SendPhoneVerification)
+
+	recorder := performUserPhoneJSON(t, router, http.MethodPost, "/api/user/phone/verification", gin.H{
+		"phone_number": "13900139000",
+		"purpose":      "sms_password_reset",
+	})
+
+	response := decodeUserPhoneAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	require.False(t, common.VerifyPhoneVerificationCode("+8613900139000", "123456", common.PhoneVerificationPurposePasswordReset))
+}
+
+func TestResetPasswordWithEmailTokenStillWorks(t *testing.T) {
+	setupUserPhoneControllerTestDB(t)
+	user := createPhoneTestUser(t, "alice", "password123", "13800138000")
+	require.NoError(t, model.DB.Model(user).Update("email", "alice@example.com").Error)
+	router := newUserPhoneRouter(t, 0)
+	router.POST("/api/user/reset", ResetPassword)
+	common.RegisterVerificationCodeWithKey("alice@example.com", "reset-token", common.PasswordResetPurpose)
+
+	recorder := performUserPhoneJSON(t, router, http.MethodPost, "/api/user/reset", gin.H{
+		"email": "alice@example.com",
+		"token": "reset-token",
+	})
+
+	response := decodeUserPhoneAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	require.NotEmpty(t, response.Data)
+	var updated model.User
+	require.NoError(t, model.DB.Where("id = ?", user.Id).First(&updated).Error)
+	require.False(t, common.ValidatePasswordAndHash("password123", updated.Password))
+}
+
+func TestAdminUpdateUserCanResetPassword(t *testing.T) {
+	setupUserPhoneControllerTestDB(t)
+	user := createPhoneTestUser(t, "alice", "password123", "13800138000")
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("role", common.RoleRootUser)
+		c.Next()
+	})
+	router.PUT("/api/user/", UpdateUser)
+
+	recorder := performUserPhoneJSON(t, router, http.MethodPut, "/api/user/", gin.H{
+		"id":           user.Id,
+		"username":     "alice",
+		"display_name": "alice",
+		"password":     "newpassword",
+		"phone_number": "+8613800138000",
+		"group":        "default",
+	})
+
+	response := decodeUserPhoneAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var updated model.User
+	require.NoError(t, model.DB.Where("id = ?", user.Id).First(&updated).Error)
+	require.True(t, common.ValidatePasswordAndHash("newpassword", updated.Password))
+	require.False(t, common.ValidatePasswordAndHash("password123", updated.Password))
 }

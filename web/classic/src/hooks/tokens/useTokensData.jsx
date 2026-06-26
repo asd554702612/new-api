@@ -36,7 +36,11 @@ import {
   encodeChannelConnectionString,
 } from '../../helpers/token';
 
-export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
+export const useTokensData = (
+  openFluentNotification,
+  openCCSwitchModal,
+  openUseApiKeyModal,
+) => {
   const { t } = useTranslation();
 
   // Basic state
@@ -218,6 +222,10 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       openCCSwitchModal(fullKey);
       return;
     }
+    if (url && url.startsWith('codex-app')) {
+      openUseApiKeyModal(fullKey, 'codex-app');
+      return;
+    }
     if (url && url.startsWith('fluent')) {
       openFluentNotification(fullKey);
       return;
@@ -306,8 +314,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   // Search tokens function
   const searchTokens = async (page = 1, size = pageSize) => {
     const normalizedPage = Number.isInteger(page) && page > 0 ? page : 1;
-    const normalizedSize =
-      Number.isInteger(size) && size > 0 ? size : pageSize;
+    const normalizedSize = Number.isInteger(size) && size > 0 ? size : pageSize;
 
     const { searchKeyword, searchToken } = getFormValues();
     if (searchKeyword === '' && searchToken === '') {

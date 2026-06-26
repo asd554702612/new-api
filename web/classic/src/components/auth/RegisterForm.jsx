@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   API,
@@ -28,6 +35,7 @@ import {
   updateAPI,
   getSystemName,
   getOAuthProviderIcon,
+  setStatusData,
   setUserData,
   onDiscordOAuthClicked,
   onCustomOAuthClicked,
@@ -137,7 +145,7 @@ const RegisterForm = () => {
   });
   const { username, password, password2 } = inputs;
   const [userState, userDispatch] = useContext(UserContext);
-  const [statusState] = useContext(StatusContext);
+  const [statusState, statusDispatch] = useContext(StatusContext);
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
@@ -187,6 +195,9 @@ const RegisterForm = () => {
       return {};
     }
   }, [statusState?.status]);
+  const phoneVerificationEnabled = Boolean(
+    status.phone_verification_enabled || status.phone_verify_enabled,
+  );
   const hasCustomOAuthProviders =
     (status.custom_oauth_providers || []).length > 0;
   const hasOAuthRegisterOptions = Boolean(
@@ -200,6 +211,23 @@ const RegisterForm = () => {
   );
 
   const [showEmailVerification, setShowEmailVerification] = useState(false);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const res = await API.get('/api/status', { disableDuplicate: true });
+      const { success, data } = res.data;
+      if (success) {
+        statusDispatch({ type: 'set', payload: data });
+        setStatusData(data);
+      }
+    } catch {
+      // PageLayout already handles status load errors; auth pages only need a best-effort refresh.
+    }
+  }, [statusDispatch]);
+
+  useEffect(() => {
+    refreshStatus();
+  }, [refreshStatus]);
 
   useEffect(() => {
     setShowEmailVerification(!!status?.email_verification);
@@ -300,7 +328,7 @@ const RegisterForm = () => {
       return;
     }
     if (
-      status.phone_verification_enabled &&
+      phoneVerificationEnabled &&
       !inputs.phone_verification_code
     ) {
       showInfo(t('请输入短信验证码！'));
@@ -706,7 +734,7 @@ const RegisterForm = () => {
                   prefix={<IconPhone />}
                 />
 
-                {status.phone_verification_enabled && (
+                {phoneVerificationEnabled && (
                   <Form.Input
                     field='phone_verification_code'
                     label={t('短信验证码')}

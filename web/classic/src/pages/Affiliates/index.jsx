@@ -38,7 +38,7 @@ import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
-import { Search, RefreshCw } from 'lucide-react';
+import { Search, RefreshCw, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   API,
@@ -51,7 +51,7 @@ import {
 const { Text } = Typography;
 
 const TAB_ENDPOINTS = {
-  invites: '/api/user/affiliates/invites',
+  invites: '/api/user/affiliates/inviters',
   rebates: '/api/user/affiliates/rebates',
   transfers: '/api/user/affiliates/transfers',
   withdrawals: '/api/user/affiliates/withdrawals',
@@ -117,10 +117,13 @@ const normalizeIdentityConfig = (config = {}) => {
       DEFAULT_IDENTITY_CONFIG.qualified_pay_amount,
     ),
     eligible_order_types:
-      Array.isArray(merged.eligible_order_types) && merged.eligible_order_types.length
+      Array.isArray(merged.eligible_order_types) &&
+      merged.eligible_order_types.length
         ? merged.eligible_order_types
         : DEFAULT_IDENTITY_CONFIG.eligible_order_types,
-    fingerprint_enforcement_enabled: Boolean(merged.fingerprint_enforcement_enabled),
+    fingerprint_enforcement_enabled: Boolean(
+      merged.fingerprint_enforcement_enabled,
+    ),
     max_accounts_per_fingerprint_hash: positiveNumberOrDefault(
       merged.max_accounts_per_fingerprint_hash,
       DEFAULT_IDENTITY_CONFIG.max_accounts_per_fingerprint_hash,
@@ -140,7 +143,7 @@ const formatDateValue = (value) => {
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 const PAGE_SIZE_OPTION_STRINGS = PAGE_SIZE_OPTIONS.map(String);
 const TABLE_MIN_WIDTHS = {
-  invites: 1000,
+  invites: 1250,
   rebates: 1400,
   transfers: 1200,
   withdrawals: 1500,
@@ -151,6 +154,32 @@ const TABLE_MIN_WIDTHS = {
 const getTableScrollX = (tabKey) => {
   const minWidth = TABLE_MIN_WIDTHS[tabKey] || 1000;
   return `max(100%, ${minWidth}px)`;
+};
+
+const toSemiSortOrder = (sortOrder) => {
+  if (sortOrder === 'asc') return 'ascend';
+  if (sortOrder === 'desc') return 'descend';
+  return false;
+};
+
+const parseSemiSorter = (nextSorter) => {
+  const source = nextSorter?.sorter || nextSorter;
+  const sorter = Array.isArray(source) ? source[0] : source;
+  if (!sorter || typeof sorter !== 'object') {
+    return { sortBy: '', sortOrder: '' };
+  }
+  const rawOrder = sorter.sortOrder || sorter.order;
+  let sortOrder = '';
+  if (rawOrder === 'ascend' || rawOrder === 'asc') sortOrder = 'asc';
+  if (rawOrder === 'descend' || rawOrder === 'desc') sortOrder = 'desc';
+  if (!sortOrder) {
+    return { sortBy: '', sortOrder: '' };
+  }
+  return {
+    sortBy:
+      sorter.dataIndex || sorter.key || sorter.field || sorter.columnKey || '',
+    sortOrder,
+  };
 };
 
 const AffiliateAdminPage = () => {
@@ -164,7 +193,17 @@ const AffiliateAdminPage = () => {
   const [search, setSearch] = useState('');
   const [dateRange, setDateRange] = useState([]);
   const [status, setStatus] = useState('');
+  const [sortBy, setSortBy] = useState('');
+  const [sortOrder, setSortOrder] = useState('');
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [selectedInviter, setSelectedInviter] = useState(null);
+  const [inviteeRecords, setInviteeRecords] = useState([]);
+  const [inviteeLoading, setInviteeLoading] = useState(false);
+  const [inviteePage, setInviteePage] = useState(1);
+  const [inviteePageSize, setInviteePageSize] = useState(10);
+  const [inviteeTotal, setInviteeTotal] = useState(0);
+  const [inviteeSortBy, setInviteeSortBy] = useState('');
+  const [inviteeSortOrder, setInviteeSortOrder] = useState('');
   const [identityConfig, setIdentityConfig] = useState({
     enabled: false,
     config: DEFAULT_IDENTITY_CONFIG,
@@ -184,7 +223,14 @@ const AffiliateAdminPage = () => {
       if (search.trim()) params.set('search', search.trim());
       if (dateRange?.[0]) params.set('start_at', dateRange[0]);
       if (dateRange?.[1]) params.set('end_at', dateRange[1]);
-      if ((activeTab === 'withdrawals' || activeTab === 'fingerprints') && status) {
+      if (sortBy && sortOrder) {
+        params.set('sort_by', sortBy);
+        params.set('sort_order', sortOrder);
+      }
+      if (
+        (activeTab === 'withdrawals' || activeTab === 'fingerprints') &&
+        status
+      ) {
         params.set('status', status);
       }
       const res = await API.get(`${TAB_ENDPOINTS[activeTab]}?${params}`);
@@ -220,9 +266,52 @@ const AffiliateAdminPage = () => {
     }
   };
 
+  const loadInviteeDetails = async (
+    inviter = selectedInviter,
+    nextPage = inviteePage,
+    nextPageSize = inviteePageSize,
+    nextSortBy = inviteeSortBy,
+    nextSortOrder = inviteeSortOrder,
+  ) => {
+    if (!inviter?.user_id) return;
+    setInviteeLoading(true);
+    try {
+      const params = new URLSearchParams({
+        p: String(nextPage),
+        page_size: String(nextPageSize),
+      });
+      if (search.trim()) params.set('search', search.trim());
+      if (dateRange?.[0]) params.set('start_at', dateRange[0]);
+      if (dateRange?.[1]) params.set('end_at', dateRange[1]);
+      if (nextSortBy && nextSortOrder) {
+        params.set('sort_by', nextSortBy);
+        params.set('sort_order', nextSortOrder);
+      }
+      const res = await API.get(
+        `/api/user/affiliates/users/${inviter.user_id}/invitees?${params}`,
+      );
+      if (res.data?.success) {
+        setInviteeRecords(res.data.data?.items || []);
+        setInviteeTotal(res.data.data?.total || 0);
+      } else {
+        showError(res.data?.message || t('加载失败'));
+      }
+    } catch {
+      showError(t('加载失败'));
+    } finally {
+      setInviteeLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadRecords();
-  }, [activeTab, page, pageSize, status]);
+  }, [activeTab, page, pageSize, status, sortBy, sortOrder]);
+
+  useEffect(() => {
+    if (selectedInviter) {
+      loadInviteeDetails(selectedInviter, inviteePage, inviteePageSize);
+    }
+  }, [inviteeSortBy, inviteeSortOrder]);
 
   const reloadFromFirstPage = () => {
     if (page === 1) {
@@ -230,6 +319,27 @@ const AffiliateAdminPage = () => {
     } else {
       setPage(1);
     }
+    if (selectedInviter) {
+      setInviteePage(1);
+      loadInviteeDetails(selectedInviter, 1, inviteePageSize);
+    }
+  };
+
+  const openInviteeDetails = (record) => {
+    setSelectedInviter(record);
+    setInviteePage(1);
+    setInviteeSortBy('');
+    setInviteeSortOrder('');
+    setInviteeRecords([]);
+    loadInviteeDetails(record, 1, inviteePageSize, '', '');
+  };
+
+  const closeInviteeDetails = () => {
+    setSelectedInviter(null);
+    setInviteeRecords([]);
+    setInviteeTotal(0);
+    setInviteeSortBy('');
+    setInviteeSortOrder('');
   };
 
   const updateIdentityConfigField = (field, value) => {
@@ -251,6 +361,108 @@ const AffiliateAdminPage = () => {
   );
 
   const renderTime = (value) => (value ? timestamp2string(value) : '-');
+
+  const renderIdentityStatus = (statusValue, expiresAt) => {
+    if (statusValue === 'active') {
+      return (
+        <Space>
+          <Tag color='green'>{t('已生效')}</Tag>
+          {expiresAt > 0 && (
+            <Text type='tertiary'>{renderTime(expiresAt)}</Text>
+          )}
+        </Space>
+      );
+    }
+    return <Tag color='grey'>{t('未获得')}</Tag>;
+  };
+
+  const getSortOrder = (field) =>
+    sortBy === field ? toSemiSortOrder(sortOrder) : false;
+  const getInviteeSortOrder = (field) =>
+    inviteeSortBy === field ? toSemiSortOrder(inviteeSortOrder) : false;
+
+  const makeSortable = (field, invitee = false) => ({
+    sorter: true,
+    sortOrder: invitee ? getInviteeSortOrder(field) : getSortOrder(field),
+  });
+
+  const handleMainTableChange = (changeInfo) => {
+    if (
+      !changeInfo ||
+      !Object.prototype.hasOwnProperty.call(changeInfo, 'sorter')
+    ) {
+      return;
+    }
+    const next = parseSemiSorter(changeInfo);
+    if (next.sortBy === sortBy && next.sortOrder === sortOrder) return;
+    setSortBy(next.sortBy);
+    setSortOrder(next.sortOrder);
+    setPage(1);
+  };
+
+  const handleInviteeTableChange = (changeInfo) => {
+    if (
+      !changeInfo ||
+      !Object.prototype.hasOwnProperty.call(changeInfo, 'sorter')
+    ) {
+      return;
+    }
+    const next = parseSemiSorter(changeInfo);
+    if (next.sortBy === inviteeSortBy && next.sortOrder === inviteeSortOrder)
+      return;
+    setInviteeSortBy(next.sortBy);
+    setInviteeSortOrder(next.sortOrder);
+    setInviteePage(1);
+  };
+
+  const inviteeColumns = useMemo(
+    () => [
+      {
+        title: t('被邀请人'),
+        key: 'invitee',
+        width: 260,
+        render: (_, record) =>
+          renderUser(record.user_id, record.username, record.email),
+      },
+      {
+        title: t('注册时间'),
+        dataIndex: 'created_at',
+        key: 'created_at',
+        width: 180,
+        render: renderTime,
+        ...makeSortable('created_at', true),
+      },
+      {
+        title: t('累计返利'),
+        dataIndex: 'cumulative_rebate_quota',
+        key: 'cumulative_rebate_quota',
+        width: 150,
+        render: (value) => renderQuota(value || 0),
+        ...makeSortable('cumulative_rebate_quota', true),
+      },
+      {
+        title: t('风控状态'),
+        key: 'risk_flagged',
+        dataIndex: 'risk_flagged',
+        width: 180,
+        render: (value, record) =>
+          value ? (
+            <Tag color='red'>{record.risk_reason || t('风险')}</Tag>
+          ) : (
+            <Tag color='green'>{t('正常')}</Tag>
+          ),
+      },
+      {
+        title: t('身份状态'),
+        key: 'identity_status',
+        dataIndex: 'identity_status',
+        width: 210,
+        render: (value, record) =>
+          renderIdentityStatus(value, record.identity_expires_at),
+      },
+    ],
+    [t, inviteeSortBy, inviteeSortOrder],
+  );
 
   const performWithdrawalAction = async (record, action, payload = {}) => {
     try {
@@ -366,8 +578,14 @@ const AffiliateAdminPage = () => {
       centered: true,
       content: (
         <div className='space-y-3'>
-          <Input placeholder={t('邀请人用户ID')} onChange={(value) => (inviterUserId = value)} />
-          <Input placeholder={t('被邀请人用户ID')} onChange={(value) => (inviteeUserId = value)} />
+          <Input
+            placeholder={t('邀请人用户ID')}
+            onChange={(value) => (inviterUserId = value)}
+          />
+          <Input
+            placeholder={t('被邀请人用户ID')}
+            onChange={(value) => (inviteeUserId = value)}
+          />
           <Select
             style={{ width: '100%' }}
             defaultValue='false'
@@ -410,9 +628,16 @@ const AffiliateAdminPage = () => {
       content: (
         <div className='space-y-3'>
           {!record.user_id && (
-            <Input placeholder={t('用户ID')} onChange={(value) => (record.user_id = Number(value))} />
+            <Input
+              placeholder={t('用户ID')}
+              onChange={(value) => (record.user_id = Number(value))}
+            />
           )}
-          <Input defaultValue={affCode} placeholder={t('专属邀请码')} onChange={(value) => (affCode = value)} />
+          <Input
+            defaultValue={affCode}
+            placeholder={t('专属邀请码')}
+            onChange={(value) => (affCode = value)}
+          />
           <InputNumber
             defaultValue={rate}
             min={0}
@@ -433,7 +658,10 @@ const AffiliateAdminPage = () => {
         if (rate !== undefined && rate !== null && rate !== '') {
           payload.aff_rebate_rate_percent = Number(rate);
         }
-        const res = await API.put(`/api/user/affiliates/users/${record.user_id}`, payload);
+        const res = await API.put(
+          `/api/user/affiliates/users/${record.user_id}`,
+          payload,
+        );
         if (res.data?.success) {
           showSuccess(t('操作成功'));
           loadRecords();
@@ -446,7 +674,9 @@ const AffiliateAdminPage = () => {
   };
 
   const clearAffiliateUser = async (record) => {
-    const res = await API.delete(`/api/user/affiliates/users/${record.user_id}`);
+    const res = await API.delete(
+      `/api/user/affiliates/users/${record.user_id}`,
+    );
     if (res.data?.success) {
       showSuccess(t('操作成功'));
       loadRecords();
@@ -515,33 +745,128 @@ const AffiliateAdminPage = () => {
         {
           title: t('邀请人'),
           key: 'inviter',
-          width: 220,
+          width: 260,
           render: (_, record) =>
-            renderUser(record.inviter_id, record.inviter_username, record.inviter_email),
+            renderUser(record.user_id, record.username, record.email),
         },
         {
-          title: t('被邀请人'),
-          key: 'invitee',
-          width: 220,
-          render: (_, record) => renderUser(record.user_id, record.username, record.email),
+          title: t('邀请码'),
+          dataIndex: 'aff_code',
+          key: 'aff_code',
+          width: 180,
+          render: (value, record) => (
+            <Space>
+              <Text>{value || '-'}</Text>
+              {record.aff_code_custom && <Tag color='blue'>{t('专属')}</Tag>}
+            </Space>
+          ),
         },
-        { title: t('邀请码'), dataIndex: 'aff_code', key: 'aff_code', width: 140, render: (value) => value || '-' },
-        { title: t('注册时间'), dataIndex: 'created_at', key: 'created_at', width: 180, render: renderTime },
+        {
+          title: t('邀请数'),
+          dataIndex: 'aff_count',
+          key: 'aff_count',
+          width: 100,
+          ...makeSortable('aff_count'),
+        },
+        {
+          title: t('累计返利'),
+          dataIndex: 'aff_history_quota',
+          key: 'aff_history_quota',
+          width: 150,
+          render: (value) => renderQuota(value || 0),
+          ...makeSortable('aff_history_quota'),
+        },
+        {
+          title: t('身份状态'),
+          key: 'identity_status',
+          dataIndex: 'identity_status',
+          width: 210,
+          render: (value, record) =>
+            renderIdentityStatus(value, record.identity_expires_at),
+        },
+        {
+          title: t('注册时间'),
+          dataIndex: 'created_at',
+          key: 'created_at',
+          width: 180,
+          render: renderTime,
+          ...makeSortable('created_at'),
+        },
+        {
+          title: t('操作'),
+          key: 'action',
+          dataIndex: 'action',
+          fixed: 'right',
+          width: 170,
+          render: (_, record) => (
+            <Button size='small' onClick={() => openInviteeDetails(record)}>
+              {t('查看邀请用户')}
+            </Button>
+          ),
+        },
       ];
     }
     if (activeTab === 'users') {
       return [
-        { title: t('用户'), key: 'user', width: 220, render: (_, record) => renderUser(record.user_id, record.username, record.email) },
-        { title: t('邀请码'), dataIndex: 'aff_code', key: 'aff_code', width: 180, render: (value, record) => (
-          <Space>
-            <Text>{value || '-'}</Text>
-            {record.aff_code_custom && <Tag color='blue'>{t('专属')}</Tag>}
-          </Space>
-        ) },
-        { title: t('专属返利比例'), dataIndex: 'aff_rebate_rate_percent', key: 'aff_rebate_rate_percent', width: 150, render: (value) => value === null || value === undefined ? '-' : `${value}%` },
-        { title: t('邀请数'), dataIndex: 'aff_count', key: 'aff_count', width: 100 },
-        { title: t('待使用返利'), dataIndex: 'aff_quota', key: 'aff_quota', width: 140, render: (value) => renderQuota(value || 0) },
-        { title: t('累计返利'), dataIndex: 'aff_history_quota', key: 'aff_history_quota', width: 140, render: (value) => renderQuota(value || 0) },
+        {
+          title: t('用户'),
+          key: 'user',
+          width: 220,
+          render: (_, record) =>
+            renderUser(record.user_id, record.username, record.email),
+        },
+        {
+          title: t('邀请码'),
+          dataIndex: 'aff_code',
+          key: 'aff_code',
+          width: 180,
+          render: (value, record) => (
+            <Space>
+              <Text>{value || '-'}</Text>
+              {record.aff_code_custom && <Tag color='blue'>{t('专属')}</Tag>}
+            </Space>
+          ),
+        },
+        {
+          title: t('专属返利比例'),
+          dataIndex: 'aff_rebate_rate_percent',
+          key: 'aff_rebate_rate_percent',
+          width: 150,
+          render: (value) =>
+            value === null || value === undefined ? '-' : `${value}%`,
+          ...makeSortable('aff_rebate_rate_percent'),
+        },
+        {
+          title: t('邀请数'),
+          dataIndex: 'aff_count',
+          key: 'aff_count',
+          width: 100,
+          ...makeSortable('aff_count'),
+        },
+        {
+          title: t('待使用返利'),
+          dataIndex: 'aff_quota',
+          key: 'aff_quota',
+          width: 140,
+          render: (value) => renderQuota(value || 0),
+          ...makeSortable('aff_quota'),
+        },
+        {
+          title: t('累计返利'),
+          dataIndex: 'aff_history_quota',
+          key: 'aff_history_quota',
+          width: 140,
+          render: (value) => renderQuota(value || 0),
+          ...makeSortable('aff_history_quota'),
+        },
+        {
+          title: t('注册时间'),
+          dataIndex: 'created_at',
+          key: 'created_at',
+          width: 180,
+          render: renderTime,
+          ...makeSortable('created_at'),
+        },
         {
           title: t('操作'),
           key: 'action',
@@ -550,8 +875,19 @@ const AffiliateAdminPage = () => {
           width: 160,
           render: (_, record) => (
             <Space>
-              <Button size='small' onClick={() => requestEditAffiliateUser(record)}>{t('编辑')}</Button>
-              <Button size='small' type='danger' onClick={() => clearAffiliateUser(record)}>{t('清除')}</Button>
+              <Button
+                size='small'
+                onClick={() => requestEditAffiliateUser(record)}
+              >
+                {t('编辑')}
+              </Button>
+              <Button
+                size='small'
+                type='danger'
+                onClick={() => clearAffiliateUser(record)}
+              >
+                {t('清除')}
+              </Button>
             </Space>
           ),
         },
@@ -559,11 +895,48 @@ const AffiliateAdminPage = () => {
     }
     if (activeTab === 'fingerprints') {
       return [
-        { title: t('用户'), key: 'user', width: 220, render: (_, record) => renderUser(record.user_id, record.username, record.email) },
-        { title: t('综合指纹'), dataIndex: 'composite_hash', key: 'composite_hash', width: 280, render: (value) => value || '-' },
-        { title: t('重复数'), dataIndex: 'duplicate_count', key: 'duplicate_count', width: 100 },
-        { title: t('风险'), dataIndex: 'risk_flagged', key: 'risk_flagged', width: 160, render: (value, record) => value ? <Tag color='red'>{record.risk_reason || t('风险')}</Tag> : <Tag color='green'>{t('正常')}</Tag> },
-        { title: t('时间'), dataIndex: 'created_at', key: 'created_at', width: 180, render: renderTime },
+        {
+          title: t('用户'),
+          key: 'user',
+          width: 220,
+          render: (_, record) =>
+            renderUser(record.user_id, record.username, record.email),
+        },
+        {
+          title: t('综合指纹'),
+          dataIndex: 'composite_hash',
+          key: 'composite_hash',
+          width: 280,
+          render: (value) => value || '-',
+        },
+        {
+          title: t('重复数'),
+          dataIndex: 'duplicate_count',
+          key: 'duplicate_count',
+          width: 100,
+          ...makeSortable('duplicate_count'),
+        },
+        {
+          title: t('风险'),
+          dataIndex: 'risk_flagged',
+          key: 'risk_flagged',
+          width: 160,
+          render: (value, record) =>
+            value ? (
+              <Tag color='red'>{record.risk_reason || t('风险')}</Tag>
+            ) : (
+              <Tag color='green'>{t('正常')}</Tag>
+            ),
+          ...makeSortable('risk_flagged'),
+        },
+        {
+          title: t('时间'),
+          dataIndex: 'created_at',
+          key: 'created_at',
+          width: 180,
+          render: renderTime,
+          ...makeSortable('created_at'),
+        },
       ];
     }
     if (activeTab === 'rebates' || activeTab === 'transfers') {
@@ -572,7 +945,8 @@ const AffiliateAdminPage = () => {
           title: activeTab === 'rebates' ? t('邀请人') : t('用户'),
           key: 'user',
           width: 220,
-          render: (_, record) => renderUser(record.user_id, record.username, record.email),
+          render: (_, record) =>
+            renderUser(record.user_id, record.username, record.email),
         },
         ...(activeTab === 'rebates'
           ? [
@@ -589,14 +963,28 @@ const AffiliateAdminPage = () => {
               },
             ]
           : []),
-        { title: t('额度'), dataIndex: 'quota', key: 'quota', width: 140, render: (value) => renderQuota(value || 0) },
+        {
+          title: t('额度'),
+          dataIndex: 'quota',
+          key: 'quota',
+          width: 140,
+          render: (value) => renderQuota(value || 0),
+          ...makeSortable('quota'),
+        },
         {
           title: t('订单/备注'),
           key: 'source',
           width: 220,
-          render: (_, record) => record.source_order_trade_no || record.remark || '-',
+          render: (_, record) =>
+            record.source_order_trade_no || record.remark || '-',
         },
-        { title: t('支付方式'), dataIndex: 'payment_method', key: 'payment_method', width: 120, render: (value) => value || '-' },
+        {
+          title: t('支付方式'),
+          dataIndex: 'payment_method',
+          key: 'payment_method',
+          width: 120,
+          render: (value) => value || '-',
+        },
         {
           title: t('当前待使用'),
           dataIndex: 'balance_after',
@@ -604,7 +992,14 @@ const AffiliateAdminPage = () => {
           width: 140,
           render: (value) => renderQuota(value || 0),
         },
-        { title: t('时间'), dataIndex: 'created_at', key: 'created_at', width: 180, render: renderTime },
+        {
+          title: t('时间'),
+          dataIndex: 'created_at',
+          key: 'created_at',
+          width: 180,
+          render: renderTime,
+          ...makeSortable('created_at'),
+        },
       ];
     }
     return [
@@ -612,29 +1007,67 @@ const AffiliateAdminPage = () => {
         title: t('用户'),
         key: 'user',
         width: 220,
-        render: (_, record) => renderUser(record.user_id, record.username, record.email),
+        render: (_, record) =>
+          renderUser(record.user_id, record.username, record.email),
       },
-      { title: t('提现额度'), dataIndex: 'quota', key: 'quota', width: 140, render: (value) => renderQuota(value || 0) },
+      {
+        title: t('提现额度'),
+        dataIndex: 'quota',
+        key: 'quota',
+        width: 140,
+        render: (value) => renderQuota(value || 0),
+        ...makeSortable('quota'),
+      },
       {
         title: t('状态'),
         dataIndex: 'status',
         key: 'status',
         width: 130,
         render: (value) => (
-          <Tag color={WITHDRAWAL_STATUS_COLORS[value] || 'grey'}>{t(value || '-')}</Tag>
+          <Tag color={WITHDRAWAL_STATUS_COLORS[value] || 'grey'}>
+            {t(value || '-')}
+          </Tag>
         ),
+        ...makeSortable('status'),
       },
-      { title: t('收款方式'), dataIndex: 'payout_method', key: 'payout_method', width: 140, render: (value) => value || '-' },
+      {
+        title: t('收款方式'),
+        dataIndex: 'payout_method',
+        key: 'payout_method',
+        width: 140,
+        render: (value) => value || '-',
+      },
       {
         title: t('收款说明'),
         dataIndex: 'payout_account_note',
         key: 'payout_account_note',
         width: 220,
-        render: (value) => <Text ellipsis={{ showTooltip: true }}>{value || '-'}</Text>,
+        render: (value) => (
+          <Text ellipsis={{ showTooltip: true }}>{value || '-'}</Text>
+        ),
       },
-      { title: t('打款渠道'), dataIndex: 'payout_channel', key: 'payout_channel', width: 140, render: (value) => value || '-' },
-      { title: t('打款流水号'), dataIndex: 'payout_trade_no', key: 'payout_trade_no', width: 180, render: (value) => value || '-' },
-      { title: t('申请时间'), dataIndex: 'created_at', key: 'created_at', width: 180, render: renderTime },
+      {
+        title: t('打款渠道'),
+        dataIndex: 'payout_channel',
+        key: 'payout_channel',
+        width: 140,
+        render: (value) => value || '-',
+      },
+      {
+        title: t('打款流水号'),
+        dataIndex: 'payout_trade_no',
+        key: 'payout_trade_no',
+        width: 180,
+        render: (value) => value || '-',
+      },
+      {
+        title: t('申请时间'),
+        dataIndex: 'created_at',
+        key: 'created_at',
+        width: 180,
+        render: renderTime,
+        ...makeSortable('created_at'),
+      },
       {
         title: t('操作'),
         key: 'action',
@@ -654,7 +1087,9 @@ const AffiliateAdminPage = () => {
                 <Button
                   size='small'
                   type='danger'
-                  onClick={() => requestWithdrawalReasonAction(record, 'reject')}
+                  onClick={() =>
+                    requestWithdrawalReasonAction(record, 'reject')
+                  }
                 >
                   {t('拒绝')}
                 </Button>
@@ -662,7 +1097,11 @@ const AffiliateAdminPage = () => {
             )}
             {record.status === 'approved' && (
               <>
-                <Button size='small' type='primary' onClick={() => markWithdrawalPaid(record)}>
+                <Button
+                  size='small'
+                  type='primary'
+                  onClick={() => markWithdrawalPaid(record)}
+                >
                   {t('已打款')}
                 </Button>
                 <Button
@@ -681,7 +1120,7 @@ const AffiliateAdminPage = () => {
         ),
       },
     ];
-  }, [activeTab, t]);
+  }, [activeTab, sortBy, sortOrder, t]);
 
   const tabTitle = {
     invites: t('邀请关系'),
@@ -750,15 +1189,22 @@ const AffiliateAdminPage = () => {
               </Select>
             )}
             {activeTab === 'invites' && (
-              <Button onClick={requestManualInviteRelation}>{t('手动关系')}</Button>
+              <Button onClick={requestManualInviteRelation}>
+                {t('手动添加关系')}
+              </Button>
             )}
             {activeTab === 'users' && (
               <>
-                <Button onClick={() => requestEditAffiliateUser()}>{t('添加专属用户')}</Button>
+                <Button onClick={() => requestEditAffiliateUser()}>
+                  {t('添加专属用户')}
+                </Button>
                 <Button onClick={requestBatchRate}>{t('批量比例')}</Button>
               </>
             )}
-            <Button icon={<RefreshCw size={14} />} onClick={reloadFromFirstPage}>
+            <Button
+              icon={<RefreshCw size={14} />}
+              onClick={reloadFromFirstPage}
+            >
               {t('查询')}
             </Button>
           </Space>
@@ -770,7 +1216,10 @@ const AffiliateAdminPage = () => {
           onChange={(key) => {
             setActiveTab(key);
             setPage(1);
+            setSortBy('');
+            setSortOrder('');
             setRecords([]);
+            closeInviteeDetails();
           }}
         >
           <TabPane itemKey='invites' tab={t('邀请关系')} />
@@ -795,7 +1244,12 @@ const AffiliateAdminPage = () => {
                     precision={2}
                     prefix={t('邀请人')}
                     style={{ width: '100%' }}
-                    onChange={(value) => updateIdentityConfigField('inviter_rate_multiplier', value)}
+                    onChange={(value) =>
+                      updateIdentityConfigField(
+                        'inviter_rate_multiplier',
+                        value,
+                      )
+                    }
                   />
                   <InputNumber
                     value={identityConfig.config.invitee_rate_multiplier}
@@ -804,7 +1258,12 @@ const AffiliateAdminPage = () => {
                     precision={2}
                     prefix={t('被邀请人')}
                     style={{ width: '100%' }}
-                    onChange={(value) => updateIdentityConfigField('invitee_rate_multiplier', value)}
+                    onChange={(value) =>
+                      updateIdentityConfigField(
+                        'invitee_rate_multiplier',
+                        value,
+                      )
+                    }
                   />
                 </div>
               </div>
@@ -816,7 +1275,9 @@ const AffiliateAdminPage = () => {
                   step={24}
                   suffix={t('小时')}
                   style={{ width: '100%', marginTop: 8 }}
-                  onChange={(value) => updateIdentityConfigField('duration_hours', value)}
+                  onChange={(value) =>
+                    updateIdentityConfigField('duration_hours', value)
+                  }
                 />
               </div>
               <div>
@@ -829,7 +1290,12 @@ const AffiliateAdminPage = () => {
                     suffix={t('人')}
                     prefix={t('邀请人数')}
                     style={{ width: '100%' }}
-                    onChange={(value) => updateIdentityConfigField('qualified_invitee_count', value)}
+                    onChange={(value) =>
+                      updateIdentityConfigField(
+                        'qualified_invitee_count',
+                        value,
+                      )
+                    }
                   />
                   <InputNumber
                     value={identityConfig.config.qualified_pay_amount}
@@ -837,7 +1303,9 @@ const AffiliateAdminPage = () => {
                     step={1}
                     prefix={t('支付额度')}
                     style={{ width: '100%' }}
-                    onChange={(value) => updateIdentityConfigField('qualified_pay_amount', value)}
+                    onChange={(value) =>
+                      updateIdentityConfigField('qualified_pay_amount', value)
+                    }
                   />
                 </div>
               </div>
@@ -847,30 +1315,50 @@ const AffiliateAdminPage = () => {
                   multiple
                   value={identityConfig.config.eligible_order_types}
                   style={{ width: '100%', marginTop: 8 }}
-                  onChange={(value) => updateIdentityConfigField('eligible_order_types', value)}
+                  onChange={(value) =>
+                    updateIdentityConfigField('eligible_order_types', value)
+                  }
                 >
                   <Select.Option value='topup'>{t('充值')}</Select.Option>
-                  <Select.Option value='subscription'>{t('订阅')}</Select.Option>
+                  <Select.Option value='subscription'>
+                    {t('订阅')}
+                  </Select.Option>
                 </Select>
               </div>
               <div>
                 <Text strong>{t('指纹风控')}</Text>
                 <div className='grid grid-cols-1 md:grid-cols-2 gap-3 mt-2'>
                   <Select
-                    value={identityConfig.config.fingerprint_enforcement_enabled ? 'true' : 'false'}
+                    value={
+                      identityConfig.config.fingerprint_enforcement_enabled
+                        ? 'true'
+                        : 'false'
+                    }
                     style={{ width: '100%' }}
-                    onChange={(value) => updateIdentityConfigField('fingerprint_enforcement_enabled', value === 'true')}
+                    onChange={(value) =>
+                      updateIdentityConfigField(
+                        'fingerprint_enforcement_enabled',
+                        value === 'true',
+                      )
+                    }
                   >
                     <Select.Option value='true'>{t('启用')}</Select.Option>
                     <Select.Option value='false'>{t('关闭')}</Select.Option>
                   </Select>
                   <InputNumber
-                    value={identityConfig.config.max_accounts_per_fingerprint_hash}
+                    value={
+                      identityConfig.config.max_accounts_per_fingerprint_hash
+                    }
                     min={1}
                     step={1}
                     prefix={t('同指纹上限')}
                     style={{ width: '100%' }}
-                    onChange={(value) => updateIdentityConfigField('max_accounts_per_fingerprint_hash', value)}
+                    onChange={(value) =>
+                      updateIdentityConfigField(
+                        'max_accounts_per_fingerprint_hash',
+                        value,
+                      )
+                    }
                   />
                 </div>
               </div>
@@ -879,63 +1367,160 @@ const AffiliateAdminPage = () => {
                 <Select
                   value={identityConfig.enabled ? 'true' : 'false'}
                   style={{ width: '100%', marginTop: 8 }}
-                  onChange={(value) => setIdentityConfig({ ...identityConfig, enabled: value === 'true' })}
+                  onChange={(value) =>
+                    setIdentityConfig({
+                      ...identityConfig,
+                      enabled: value === 'true',
+                    })
+                  }
                 >
                   <Select.Option value='true'>{t('启用')}</Select.Option>
                   <Select.Option value='false'>{t('关闭')}</Select.Option>
                 </Select>
               </div>
             </div>
-            <Button type='primary' onClick={saveIdentityConfig}>{t('保存')}</Button>
+            <Button type='primary' onClick={saveIdentityConfig}>
+              {t('保存')}
+            </Button>
           </div>
         ) : (
-          <Table
-            columns={columns}
-            dataSource={records}
-            loading={loading}
-            rowKey={activeTab === 'invites' ? 'user_id' : activeTab === 'users' ? 'user_id' : 'id'}
-            rowSelection={activeTab === 'users' ? {
-              selectedRowKeys,
-              onChange: setSelectedRowKeys,
-            } : undefined}
-            scroll={{ x: tableScrollX }}
-            pagination={{
-              currentPage: page,
-              pageSize,
-              total,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              pageSizeOpts: PAGE_SIZE_OPTIONS,
-              pageSizeOptions: PAGE_SIZE_OPTION_STRINGS,
-              onPageChange: setPage,
-              onPageSizeChange: (value) => {
-                setPageSize(value);
-                setPage(1);
-              },
-              onChange: (nextPage, nextPageSize) => {
-                setPage(nextPage);
-                if (nextPageSize && nextPageSize !== pageSize) {
+          <div className='space-y-4'>
+            <Table
+              columns={columns}
+              dataSource={records}
+              loading={loading}
+              rowKey={
+                activeTab === 'invites'
+                  ? 'user_id'
+                  : activeTab === 'users'
+                    ? 'user_id'
+                    : 'id'
+              }
+              rowSelection={
+                activeTab === 'users'
+                  ? {
+                      selectedRowKeys,
+                      onChange: setSelectedRowKeys,
+                    }
+                  : undefined
+              }
+              scroll={{ x: tableScrollX }}
+              onChange={handleMainTableChange}
+              pagination={{
+                currentPage: page,
+                pageSize,
+                total,
+                showSizeChanger: true,
+                showQuickJumper: true,
+                pageSizeOpts: PAGE_SIZE_OPTIONS,
+                pageSizeOptions: PAGE_SIZE_OPTION_STRINGS,
+                onPageChange: setPage,
+                onPageSizeChange: (value) => {
+                  setPageSize(value);
+                  setPage(1);
+                },
+                onChange: (nextPage, nextPageSize) => {
+                  setPage(nextPage);
+                  if (nextPageSize && nextPageSize !== pageSize) {
+                    setPageSize(nextPageSize);
+                  }
+                },
+                onShowSizeChange: (current, nextPageSize) => {
+                  setPage(1);
                   setPageSize(nextPageSize);
-                }
-              },
-              onShowSizeChange: (current, nextPageSize) => {
-                setPage(1);
-                setPageSize(nextPageSize);
-              },
-            }}
-            size='middle'
-            className='overflow-hidden'
-            empty={
-              <Empty
-                image={<IllustrationNoResult style={{ width: 150, height: 150 }} />}
-                darkModeImage={
-                  <IllustrationNoResultDark style={{ width: 150, height: 150 }} />
-                }
-                description={t('暂无记录')}
-                style={{ padding: 30 }}
-              />
-            }
-          />
+                },
+              }}
+              size='middle'
+              className='overflow-hidden'
+              empty={
+                <Empty
+                  image={
+                    <IllustrationNoResult style={{ width: 150, height: 150 }} />
+                  }
+                  darkModeImage={
+                    <IllustrationNoResultDark
+                      style={{ width: 150, height: 150 }}
+                    />
+                  }
+                  description={t('暂无记录')}
+                  style={{ padding: 30 }}
+                />
+              }
+            />
+            {activeTab === 'invites' && selectedInviter && (
+              <div className='border border-gray-200 dark:border-gray-700 rounded-lg p-4'>
+                <div className='flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3'>
+                  <div>
+                    <Text strong>{t('邀请用户明细')}</Text>
+                    <div className='text-sm text-gray-500 break-all'>
+                      {selectedInviter.email ||
+                        selectedInviter.username ||
+                        `#${selectedInviter.user_id}`}
+                    </div>
+                  </div>
+                  <Button icon={<X size={14} />} onClick={closeInviteeDetails}>
+                    {t('关闭')}
+                  </Button>
+                </div>
+                <Table
+                  columns={inviteeColumns}
+                  dataSource={inviteeRecords}
+                  loading={inviteeLoading}
+                  rowKey='user_id'
+                  scroll={{ x: 'max(100%, 980px)' }}
+                  pagination={{
+                    currentPage: inviteePage,
+                    pageSize: inviteePageSize,
+                    total: inviteeTotal,
+                    showSizeChanger: true,
+                    showQuickJumper: true,
+                    pageSizeOpts: PAGE_SIZE_OPTIONS,
+                    pageSizeOptions: PAGE_SIZE_OPTION_STRINGS,
+                    onPageChange: (nextPage) => {
+                      setInviteePage(nextPage);
+                      loadInviteeDetails(
+                        selectedInviter,
+                        nextPage,
+                        inviteePageSize,
+                        inviteeSortBy,
+                        inviteeSortOrder,
+                      );
+                    },
+                    onPageSizeChange: (value) => {
+                      setInviteePageSize(value);
+                      setInviteePage(1);
+                      loadInviteeDetails(
+                        selectedInviter,
+                        1,
+                        value,
+                        inviteeSortBy,
+                        inviteeSortOrder,
+                      );
+                    },
+                  }}
+                  onChange={handleInviteeTableChange}
+                  size='small'
+                  className='overflow-hidden'
+                  empty={
+                    <Empty
+                      image={
+                        <IllustrationNoResult
+                          style={{ width: 120, height: 120 }}
+                        />
+                      }
+                      darkModeImage={
+                        <IllustrationNoResultDark
+                          style={{ width: 120, height: 120 }}
+                        />
+                      }
+                      description={t('暂无记录')}
+                      style={{ padding: 20 }}
+                    />
+                  }
+                />
+              </div>
+            )}
+          </div>
         )}
       </Card>
     </div>

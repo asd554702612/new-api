@@ -52,6 +52,7 @@ type PaymentOrderItem struct {
 	Amount              int64   `json:"amount"`
 	Money               float64 `json:"money"`
 	PayAmount           float64 `json:"pay_amount"`
+	PayCurrency         string  `json:"pay_currency,omitempty"`
 	PlanID              int     `json:"plan_id,omitempty"`
 	PlanTitle           string  `json:"plan_title,omitempty"`
 	RefundAmount        float64 `json:"refund_amount,omitempty"`
@@ -96,6 +97,20 @@ type PaymentDashboardDailyItem struct {
 	Date   string  `json:"date"`
 	Count  int     `json:"count"`
 	Amount float64 `json:"amount"`
+}
+
+type paymentDashboardRawOrder struct {
+	UserID       int
+	PaymentType  string
+	Status       string
+	PayAmount    float64
+	CreatedTime  int64
+	CompleteTime int64
+}
+
+type subscriptionPlanOrderMeta struct {
+	Title    string
+	Currency string
 }
 
 func ListPaymentOrders(params PaymentOrderListParams) ([]PaymentOrderItem, int, error) {
@@ -233,51 +248,350 @@ func RetryPaymentOrderFulfillment(ref PaymentOrderRef, operator string) error {
 	})
 }
 
-func ProcessPaymentOrderRefund(ref PaymentOrderRef, amount float64, reason string, force bool, deductBalance bool, operator string) error {
+func ProcessPaymentOrderRefund(ref PaymentOrderRef, amount float64, reason string, force bool, deductBalance bool, operator string) (*model.PaymentOrderRefund, error) {
 	if amount <= 0 {
-		return errors.New("退款金额必须大于 0")
+		return nil, errors.New("退款金额必须大于 0")
 	}
-	if strings.TrimSpace(reason) == "" {
-		return errors.New("退款原因不能为空")
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return nil, errors.New("退款原因不能为空")
 	}
 	item, err := getPaymentOrderItem(ref)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if item.Status != UnifiedOrderStatusCompleted && item.Status != UnifiedOrderStatusRefundRequested {
-		return errors.New("当前订单不支持退款")
+	if !isRefundableOrderStatus(item.Status) {
+		return nil, errors.New("当前订单不支持退款")
 	}
-	if amount-item.PayAmount > 0.000001 && !force {
-		return errors.New("退款金额不能大于订单支付金额")
+	provider := normalizePaymentRefundProvider(item)
+	if !isAutoRefundProviderSupported(provider) {
+		return nil, fmt.Errorf("支付渠道 %s 不支持自动退款，请手动处理", provider)
 	}
-	return model.DB.Transaction(func(tx *gorm.DB) error {
-		refund := model.PaymentOrderRefund{
-			Source:             item.Source,
-			OrderType:          item.OrderType,
-			SourceOrderId:      item.ID,
-			SourceOrderTradeNo: item.TradeNo,
-			UserId:             item.UserID,
-			Amount:             amount,
-			Reason:             strings.TrimSpace(reason),
-			Status:             model.PaymentRefundStatusProcessed,
-			RequestedBy:        "admin",
-			Force:              force,
-			DeductBalance:      deductBalance,
-			ProcessTime:        common.GetTimestamp(),
+	processedAmount, processedRollbackQuota, err := processedRefundTotals(item)
+	if err != nil {
+		return nil, err
+	}
+	if !force && processedAmount+amount-item.PayAmount > 0.000001 {
+		return nil, errors.New("累计退款金额不能大于订单支付金额")
+	}
+
+	refundNo := buildProviderRefundNo(item)
+	totalCents := paymentOrderProviderTotalCents(item)
+	refundCents := paymentOrderRefundCents(amount, item.PayAmount, totalCents)
+	if totalCents == 0 {
+		totalCents = MoneyToCNYCents(item.PayAmount)
+	}
+
+	providerResult := &paymentProviderRefundResult{ProviderRefundStatus: "balance", ProviderResponse: "{}"}
+	if provider != model.PaymentProviderBalance {
+		req := paymentProviderRefundRequest{
+			Provider:          provider,
+			TradeNo:           item.TradeNo,
+			ProviderRefundNo:  refundNo,
+			Reason:            reason,
+			RefundAmountCents: refundCents,
+			TotalAmountCents:  totalCents,
+		}
+		providerResult, err = paymentProviderRefunder(req)
+		if err != nil {
+			_ = createFailedPaymentOrderRefund(item, amount, reason, force, refundNo, refundCents, totalCents, err, operator)
+			return nil, err
+		}
+	}
+
+	var refund model.PaymentOrderRefund
+	var quotaCacheDelta int64
+	var groupCacheUserID int
+	var groupCacheValue string
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		rollbackQuota, quotaDelta, err := rollbackPaymentOrderBenefitsTx(tx, item, amount, processedRollbackQuota)
+		if err != nil {
+			return err
+		}
+		refund = model.PaymentOrderRefund{
+			Source:               item.Source,
+			OrderType:            item.OrderType,
+			SourceOrderId:        item.ID,
+			SourceOrderTradeNo:   item.TradeNo,
+			UserId:               item.UserID,
+			Amount:               amount,
+			Reason:               reason,
+			Status:               model.PaymentRefundStatusProcessed,
+			RequestedBy:          "admin",
+			Force:                force,
+			DeductBalance:        rollbackQuota > 0 || deductBalance,
+			ProviderRefundNo:     refundNo,
+			ProviderRefundId:     providerResult.ProviderRefundID,
+			ProviderRefundStatus: providerResult.ProviderRefundStatus,
+			ProviderResponse:     providerResult.ProviderResponse,
+			RefundCurrency:       "CNY",
+			RefundAmountCents:    refundCents,
+			TotalAmountCents:     totalCents,
+			RollbackQuota:        rollbackQuota,
+			ProcessTime:          common.GetTimestamp(),
 		}
 		if err := tx.Create(&refund).Error; err != nil {
 			return err
 		}
-		if deductBalance {
-			quotaToDeduct := int(math.Round(amount * common.QuotaPerUnit))
-			if quotaToDeduct > 0 {
-				if err := tx.Model(&model.User{}).Where("id = ?", item.UserID).Update("quota", gorm.Expr("CASE WHEN quota >= ? THEN quota - ? ELSE 0 END", quotaToDeduct, quotaToDeduct)).Error; err != nil {
-					return err
-				}
+		if item.Source == model.PaymentOrderSourceSubscription {
+			cacheUserID, cacheGroup, err := cancelSubscriptionForRefundTx(tx, item)
+			if err != nil {
+				return err
 			}
+			groupCacheUserID = cacheUserID
+			groupCacheValue = cacheGroup
 		}
+		quotaCacheDelta = quotaDelta
 		return createPaymentOrderAuditTx(tx, item, "refund_processed", fmt.Sprintf("退款 %.2f：%s", amount, reason), operator)
 	})
+	if err != nil {
+		return nil, err
+	}
+	if quotaCacheDelta != 0 {
+		_ = model.UpdateUserQuotaCacheDelta(item.UserID, quotaCacheDelta)
+	}
+	if groupCacheUserID > 0 && groupCacheValue != "" {
+		_ = model.UpdateUserGroupCache(groupCacheUserID, groupCacheValue)
+	}
+	return &refund, nil
+}
+
+func isRefundableOrderStatus(status string) bool {
+	switch status {
+	case UnifiedOrderStatusCompleted, UnifiedOrderStatusRefundRequested, UnifiedOrderStatusRefunded, UnifiedOrderStatusRefundFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizePaymentRefundProvider(item *PaymentOrderItem) string {
+	if item == nil {
+		return ""
+	}
+	provider := strings.TrimSpace(item.PaymentProvider)
+	if provider == model.PaymentMethodAlipayDirect {
+		return model.PaymentProviderAlipay
+	}
+	if provider != "" {
+		return provider
+	}
+	switch strings.TrimSpace(item.PaymentMethod) {
+	case model.PaymentMethodWechatPay:
+		return model.PaymentProviderWechatPay
+	case model.PaymentMethodAlipayDirect:
+		return model.PaymentProviderAlipay
+	case model.PaymentMethodBalance:
+		return model.PaymentProviderBalance
+	default:
+		return strings.TrimSpace(item.PaymentMethod)
+	}
+}
+
+func isAutoRefundProviderSupported(provider string) bool {
+	switch provider {
+	case model.PaymentProviderWechatPay, model.PaymentProviderAlipay, model.PaymentProviderBalance:
+		return true
+	default:
+		return false
+	}
+}
+
+func processedRefundTotals(item *PaymentOrderItem) (float64, int64, error) {
+	var refunds []model.PaymentOrderRefund
+	if err := model.DB.Where("source = ? AND source_order_id = ? AND status = ?", item.Source, item.ID, model.PaymentRefundStatusProcessed).Find(&refunds).Error; err != nil {
+		return 0, 0, err
+	}
+	var amount float64
+	var rollbackQuota int64
+	for _, refund := range refunds {
+		amount += refund.Amount
+		rollbackQuota += refund.RollbackQuota
+	}
+	return amount, rollbackQuota, nil
+}
+
+func buildProviderRefundNo(item *PaymentOrderItem) string {
+	return fmt.Sprintf("PAYREF-%s-%d-%d-%s", item.OrderType, item.ID, common.GetTimestamp(), common.GetRandomString(6))
+}
+
+func paymentOrderProviderTotalCents(item *PaymentOrderItem) int64 {
+	if item == nil || item.Source != model.PaymentOrderSourceSubscription {
+		return 0
+	}
+	var order model.SubscriptionOrder
+	if err := model.DB.Select("provider_payload").Where("id = ?", item.ID).First(&order).Error; err != nil {
+		return 0
+	}
+	return providerPayloadTotalCents(order.ProviderPayload)
+}
+
+func providerPayloadTotalCents(payload string) int64 {
+	payload = strings.TrimSpace(payload)
+	if payload == "" {
+		return 0
+	}
+	var parsed struct {
+		Amount struct {
+			Total      int64 `json:"total"`
+			PayerTotal int64 `json:"payer_total"`
+		} `json:"amount"`
+		TotalAmount string `json:"total_amount"`
+	}
+	if err := common.UnmarshalJsonStr(payload, &parsed); err != nil {
+		return 0
+	}
+	if parsed.Amount.Total > 0 {
+		return parsed.Amount.Total
+	}
+	if parsed.Amount.PayerTotal > 0 {
+		return parsed.Amount.PayerTotal
+	}
+	if parsed.TotalAmount != "" {
+		value, err := strconv.ParseFloat(parsed.TotalAmount, 64)
+		if err == nil {
+			return MoneyToCNYCents(value)
+		}
+	}
+	return 0
+}
+
+func paymentOrderRefundCents(refundAmount float64, payAmount float64, totalCents int64) int64 {
+	if totalCents <= 0 || payAmount <= 0 {
+		return MoneyToCNYCents(refundAmount)
+	}
+	if math.Abs(refundAmount-payAmount) <= 0.01 {
+		return totalCents
+	}
+	return int64(math.Round(float64(totalCents) * refundAmount / payAmount))
+}
+
+func createFailedPaymentOrderRefund(item *PaymentOrderItem, amount float64, reason string, force bool, refundNo string, refundCents int64, totalCents int64, cause error, operator string) error {
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		refund := model.PaymentOrderRefund{
+			Source:               item.Source,
+			OrderType:            item.OrderType,
+			SourceOrderId:        item.ID,
+			SourceOrderTradeNo:   item.TradeNo,
+			UserId:               item.UserID,
+			Amount:               amount,
+			Reason:               reason,
+			Status:               model.PaymentRefundStatusFailed,
+			RequestedBy:          "admin",
+			Force:                force,
+			ProviderRefundNo:     refundNo,
+			ProviderRefundStatus: "failed",
+			ProviderResponse:     cause.Error(),
+			RefundCurrency:       "CNY",
+			RefundAmountCents:    refundCents,
+			TotalAmountCents:     totalCents,
+			ProcessTime:          common.GetTimestamp(),
+		}
+		if err := tx.Create(&refund).Error; err != nil {
+			return err
+		}
+		return createPaymentOrderAuditTx(tx, item, "refund_failed", cause.Error(), operator)
+	})
+}
+
+func rollbackPaymentOrderBenefitsTx(tx *gorm.DB, item *PaymentOrderItem, refundAmount float64, processedRollbackQuota int64) (int64, int64, error) {
+	switch item.Source {
+	case model.PaymentOrderSourceTopUp:
+		totalQuota := int64(math.Round(float64(item.Amount) * common.QuotaPerUnit))
+		rollbackQuota := proportionalQuota(totalQuota, refundAmount, item.PayAmount, processedRollbackQuota)
+		if rollbackQuota <= 0 {
+			return 0, 0, nil
+		}
+		actualDelta, err := applyUserQuotaDeltaTx(tx, item.UserID, -rollbackQuota)
+		return -actualDelta, actualDelta, err
+	case model.PaymentOrderSourceSubscription:
+		if normalizePaymentRefundProvider(item) != model.PaymentProviderBalance {
+			return 0, 0, nil
+		}
+		totalQuota, err := subscriptionBalanceChargedQuotaTx(tx, item.ID)
+		if err != nil {
+			return 0, 0, err
+		}
+		rollbackQuota := proportionalQuota(totalQuota, refundAmount, item.PayAmount, processedRollbackQuota)
+		if rollbackQuota <= 0 {
+			return 0, 0, nil
+		}
+		actualDelta, err := applyUserQuotaDeltaTx(tx, item.UserID, rollbackQuota)
+		return actualDelta, actualDelta, err
+	default:
+		return 0, 0, errors.New("不支持的订单类型")
+	}
+}
+
+func proportionalQuota(totalQuota int64, refundAmount float64, payAmount float64, processedRollbackQuota int64) int64 {
+	if totalQuota <= 0 || refundAmount <= 0 || payAmount <= 0 {
+		return 0
+	}
+	var quota int64
+	if math.Abs(refundAmount-payAmount) <= 0.01 {
+		quota = totalQuota
+	} else {
+		quota = int64(math.Round(float64(totalQuota) * refundAmount / payAmount))
+	}
+	remaining := totalQuota - processedRollbackQuota
+	if remaining < 0 {
+		remaining = 0
+	}
+	if quota > remaining {
+		quota = remaining
+	}
+	return quota
+}
+
+func subscriptionBalanceChargedQuotaTx(tx *gorm.DB, orderID int) (int64, error) {
+	var order model.SubscriptionOrder
+	if err := tx.Select("provider_payload", "money").Where("id = ?", orderID).First(&order).Error; err != nil {
+		return 0, err
+	}
+	payload := strings.TrimSpace(order.ProviderPayload)
+	if strings.HasPrefix(payload, "charged_quota=") {
+		value, err := strconv.ParseInt(strings.TrimPrefix(payload, "charged_quota="), 10, 64)
+		if err == nil && value > 0 {
+			return value, nil
+		}
+	}
+	return int64(math.Ceil(order.Money * common.QuotaPerUnit)), nil
+}
+
+func applyUserQuotaDeltaTx(tx *gorm.DB, userID int, delta int64) (int64, error) {
+	if delta == 0 {
+		return 0, nil
+	}
+	if delta > 0 {
+		return delta, model.DeltaUpdateUserQuotaTx(tx, userID, delta)
+	}
+	var user model.User
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").Select("id", "quota").Where("id = ?", userID).First(&user).Error; err != nil {
+		return 0, err
+	}
+	deduct := -delta
+	if int64(user.Quota) < deduct {
+		deduct = int64(user.Quota)
+	}
+	if deduct <= 0 {
+		return 0, nil
+	}
+	return -deduct, model.DeltaUpdateUserQuotaTx(tx, userID, -deduct)
+}
+
+func cancelSubscriptionForRefundTx(tx *gorm.DB, item *PaymentOrderItem) (int, string, error) {
+	var order model.SubscriptionOrder
+	if err := tx.Select("user_id", "plan_id", "complete_time").Where("id = ?", item.ID).First(&order).Error; err != nil {
+		return 0, "", err
+	}
+	_, cacheGroup, err := model.CancelOrderUserSubscriptionForRefundTx(tx, order.UserId, order.PlanId, order.CompleteTime)
+	if err != nil {
+		return 0, "", err
+	}
+	if cacheGroup == "" {
+		return 0, "", nil
+	}
+	return order.UserId, cacheGroup, nil
 }
 
 func GetPaymentDashboard(days int) (*PaymentDashboardStats, error) {
@@ -287,7 +601,7 @@ func GetPaymentDashboard(days int) (*PaymentDashboardStats, error) {
 	if days > 365 {
 		days = 365
 	}
-	orders, _, err := ListPaymentOrders(PaymentOrderListParams{Page: 1, PageSize: 10000})
+	orders, err := listPaymentDashboardOrders()
 	if err != nil {
 		return nil, err
 	}
@@ -298,35 +612,38 @@ func GetPaymentDashboard(days int) (*PaymentDashboardStats, error) {
 	users := map[int]PaymentDashboardUser{}
 	daily := map[string]PaymentDashboardDailyItem{}
 	for _, order := range orders {
-		if order.CreatedTime < startUnix {
-			continue
-		}
-		stats.TotalOrders++
 		switch order.Status {
 		case UnifiedOrderStatusCompleted:
+			if order.CompleteTime < startUnix {
+				continue
+			}
+			stats.TotalOrders++
 			stats.CompletedOrders++
 			stats.TotalAmount += order.PayAmount
-			method := methods[order.PaymentMethod]
-			method.Type = order.PaymentMethod
+			method := methods[order.PaymentType]
+			method.Type = order.PaymentType
 			method.Count++
 			method.Amount += order.PayAmount
-			methods[order.PaymentMethod] = method
+			methods[order.PaymentType] = method
 			user := users[order.UserID]
 			user.UserID = order.UserID
 			user.Count++
 			user.Amount += order.PayAmount
 			users[order.UserID] = user
-			date := time.Unix(order.CreatedTime, 0).Format("2006-01-02")
+			date := time.Unix(order.CompleteTime, 0).Format("2006-01-02")
 			day := daily[date]
 			day.Date = date
 			day.Count++
 			day.Amount += order.PayAmount
 			daily[date] = day
 		case UnifiedOrderStatusPending:
+			stats.TotalOrders++
 			stats.PendingOrders++
 		case UnifiedOrderStatusFailed:
+			stats.TotalOrders++
 			stats.FailedOrders++
 		case UnifiedOrderStatusRefunded:
+			stats.TotalOrders++
 			stats.RefundedOrders++
 		}
 	}
@@ -351,6 +668,71 @@ func GetPaymentDashboard(days int) (*PaymentDashboardStats, error) {
 		stats.DailySeries = append(stats.DailySeries, item)
 	}
 	return stats, nil
+}
+
+func listPaymentDashboardOrders() ([]paymentDashboardRawOrder, error) {
+	items := make([]paymentDashboardRawOrder, 0)
+	topUps, err := listPaymentDashboardTopUpOrders()
+	if err != nil {
+		return nil, err
+	}
+	items = append(items, topUps...)
+	subscriptions, err := listPaymentDashboardSubscriptionOrders()
+	if err != nil {
+		return nil, err
+	}
+	items = append(items, subscriptions...)
+	return items, nil
+}
+
+func listPaymentDashboardTopUpOrders() ([]paymentDashboardRawOrder, error) {
+	var topUps []model.TopUp
+	query := model.DB.Model(&model.TopUp{}).
+		Where("trade_no NOT IN (?)", model.DB.Model(&model.SubscriptionOrder{}).Select("trade_no"))
+	if err := query.Find(&topUps).Error; err != nil {
+		return nil, err
+	}
+	items := make([]paymentDashboardRawOrder, 0, len(topUps))
+	for _, topUp := range topUps {
+		items = append(items, paymentDashboardRawOrder{
+			UserID:       topUp.UserId,
+			PaymentType:  firstNonEmpty(topUp.PaymentMethod, topUp.PaymentProvider),
+			Status:       normalizePaymentOrderStatus(topUp.Status),
+			PayAmount:    topUp.Money,
+			CreatedTime:  topUp.CreateTime,
+			CompleteTime: topUp.CompleteTime,
+		})
+	}
+	return items, nil
+}
+
+func listPaymentDashboardSubscriptionOrders() ([]paymentDashboardRawOrder, error) {
+	var orders []model.SubscriptionOrder
+	if err := model.DB.Model(&model.SubscriptionOrder{}).Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	items := make([]paymentDashboardRawOrder, 0, len(orders))
+	for _, order := range orders {
+		items = append(items, paymentDashboardRawOrder{
+			UserID:       order.UserId,
+			PaymentType:  firstNonEmpty(order.PaymentMethod, order.PaymentProvider),
+			Status:       normalizePaymentOrderStatus(order.Status),
+			PayAmount:    order.Money,
+			CreatedTime:  order.CreateTime,
+			CompleteTime: order.CompleteTime,
+		})
+	}
+	return items, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return "unknown"
 }
 
 func normalizePaymentOrderListParams(params *PaymentOrderListParams) {
@@ -407,10 +789,10 @@ func listSubscriptionOrders(params PaymentOrderListParams) ([]PaymentOrderItem, 
 	if err := query.Find(&orders).Error; err != nil {
 		return nil, err
 	}
-	planTitles := subscriptionPlanTitles(orders)
+	planMeta := subscriptionPlanOrderMetaMap(orders)
 	items := make([]PaymentOrderItem, 0, len(orders))
 	for _, order := range orders {
-		items = append(items, subscriptionOrderItem(order, planTitles[order.PlanId]))
+		items = append(items, subscriptionOrderItem(order, planMeta[order.PlanId]))
 	}
 	return items, nil
 }
@@ -433,7 +815,7 @@ func topUpOrderItem(topUp model.TopUp) PaymentOrderItem {
 	}
 }
 
-func subscriptionOrderItem(order model.SubscriptionOrder, planTitle string) PaymentOrderItem {
+func subscriptionOrderItem(order model.SubscriptionOrder, planMeta subscriptionPlanOrderMeta) PaymentOrderItem {
 	return PaymentOrderItem{
 		Source:          model.PaymentOrderSourceSubscription,
 		OrderType:       model.PaymentOrderTypeSubscription,
@@ -445,14 +827,15 @@ func subscriptionOrderItem(order model.SubscriptionOrder, planTitle string) Paym
 		Status:          normalizePaymentOrderStatus(order.Status),
 		Money:           order.Money,
 		PayAmount:       order.Money,
+		PayCurrency:     planMeta.Currency,
 		PlanID:          order.PlanId,
-		PlanTitle:       planTitle,
+		PlanTitle:       planMeta.Title,
 		CreatedTime:     order.CreateTime,
 		CompleteTime:    order.CompleteTime,
 	}
 }
 
-func subscriptionPlanTitles(orders []model.SubscriptionOrder) map[int]string {
+func subscriptionPlanOrderMetaMap(orders []model.SubscriptionOrder) map[int]subscriptionPlanOrderMeta {
 	ids := make([]int, 0)
 	seen := map[int]struct{}{}
 	for _, order := range orders {
@@ -466,17 +849,20 @@ func subscriptionPlanTitles(orders []model.SubscriptionOrder) map[int]string {
 		ids = append(ids, order.PlanId)
 	}
 	if len(ids) == 0 {
-		return map[int]string{}
+		return map[int]subscriptionPlanOrderMeta{}
 	}
 	var plans []model.SubscriptionPlan
-	if err := model.DB.Select("id", "title").Where("id IN ?", ids).Find(&plans).Error; err != nil {
-		return map[int]string{}
+	if err := model.DB.Select("id", "title", "currency").Where("id IN ?", ids).Find(&plans).Error; err != nil {
+		return map[int]subscriptionPlanOrderMeta{}
 	}
-	titles := make(map[int]string, len(plans))
+	meta := make(map[int]subscriptionPlanOrderMeta, len(plans))
 	for _, plan := range plans {
-		titles[plan.Id] = plan.Title
+		meta[plan.Id] = subscriptionPlanOrderMeta{
+			Title:    plan.Title,
+			Currency: strings.ToUpper(strings.TrimSpace(plan.Currency)),
+		}
 	}
-	return titles
+	return meta
 }
 
 func overlayPaymentOrderRefunds(items []PaymentOrderItem) error {
@@ -684,16 +1070,19 @@ func getPaymentOrderItem(ref PaymentOrderRef) (*PaymentOrderItem, error) {
 		var order model.SubscriptionOrder
 		err := model.DB.Where("id = ?", ref.ID).First(&order).Error
 		if err == nil {
-			planTitle := ""
+			planMeta := subscriptionPlanOrderMeta{}
 			if order.PlanId > 0 {
 				var plan model.SubscriptionPlan
-				if planErr := model.DB.Select("id", "title").Where("id = ?", order.PlanId).First(&plan).Error; planErr == nil {
-					planTitle = plan.Title
+				if planErr := model.DB.Select("id", "title", "currency").Where("id = ?", order.PlanId).First(&plan).Error; planErr == nil {
+					planMeta = subscriptionPlanOrderMeta{
+						Title:    plan.Title,
+						Currency: strings.ToUpper(strings.TrimSpace(plan.Currency)),
+					}
 				} else if !errors.Is(planErr, gorm.ErrRecordNotFound) {
 					return nil, planErr
 				}
 			}
-			item := subscriptionOrderItem(order, planTitle)
+			item := subscriptionOrderItem(order, planMeta)
 			items := []PaymentOrderItem{item}
 			if err := overlayPaymentOrderRefunds(items); err != nil {
 				return nil, err

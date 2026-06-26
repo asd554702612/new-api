@@ -377,6 +377,13 @@ const renderOperations = (
         });
       }
     }
+    chatsArray.push({
+      node: 'item',
+      key: 'codex-app',
+      name: t('Codex App'),
+      value: 'codex-app',
+      onClick: () => onOpenLink(t('Codex App'), 'codex-app', record),
+    });
   } catch (_) {
     showError(t('聊天链接配置错误，请联系管理员'));
   }

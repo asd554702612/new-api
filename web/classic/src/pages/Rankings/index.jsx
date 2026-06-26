@@ -35,6 +35,7 @@ import { IconRefresh } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { API, renderQuota, showError } from '../../helpers';
 import { formatCompactNumber } from './utils';
+import './rankings.css';
 
 const { Text, Title } = Typography;
 const MODEL_PERIODS = ['today', 'week', 'month', 'year', 'all'];
@@ -282,6 +283,7 @@ const Rankings = () => {
               >
                 <RankingTableSection title={t('模型')}>
                   <Table
+                    className='rankings-table rankings-table-model'
                     rowKey='model_name'
                     columns={modelColumns}
                     dataSource={modelsSnapshot?.models || []}
@@ -293,6 +295,7 @@ const Rankings = () => {
                 </RankingTableSection>
                 <RankingTableSection title={t('厂商')}>
                   <Table
+                    className='rankings-table rankings-table-vendor'
                     rowKey='vendor'
                     columns={vendorColumns}
                     dataSource={modelsSnapshot?.vendors || []}
@@ -366,6 +369,7 @@ const Rankings = () => {
                 }
               >
                 <Table
+                  className='rankings-table rankings-table-user'
                   rowKey='user_id'
                   columns={userColumns}
                   dataSource={userSnapshot?.ranking || []}

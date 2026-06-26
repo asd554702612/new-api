@@ -629,7 +629,13 @@ const PersonalSetting = () => {
           <UserInfoHeader t={t} userState={userState} />
 
           <div className='mt-4 md:mt-6'>
-            <PersonalInfoCard t={t} user={userState.user} />
+            <PersonalInfoCard
+              t={t}
+              user={userState.user}
+              phoneVerificationEnabled={status?.phone_verification_enabled}
+              onChangePhone={() => setShowPhoneBindModal(true)}
+              onChangePassword={() => setShowChangePasswordModal(true)}
+            />
           </div>
 
           {/* 签到日历 - 仅在启用时显示 */}
@@ -698,11 +704,6 @@ const PersonalSetting = () => {
         turnstileEnabled={turnstileEnabled}
         turnstileSiteKey={turnstileSiteKey}
         setTurnstileToken={setTurnstileToken}
-        phoneNumber={userState.user?.phone_number}
-        sendPasswordPhoneVerificationCode={sendPasswordPhoneVerificationCode}
-        disableButton={disableButton}
-        loading={loading}
-        countdown={countdown}
       />
 
       <PhoneBindModal
@@ -719,6 +720,7 @@ const PersonalSetting = () => {
         turnstileEnabled={turnstileEnabled}
         turnstileSiteKey={turnstileSiteKey}
         setTurnstileToken={setTurnstileToken}
+        currentPhoneNumber={userState.user?.phone_number}
       />
 
       <WeChatBindModal
@@ -754,6 +756,11 @@ const PersonalSetting = () => {
         turnstileEnabled={turnstileEnabled}
         turnstileSiteKey={turnstileSiteKey}
         setTurnstileToken={setTurnstileToken}
+        phoneNumber={userState.user?.phone_number}
+        sendPasswordPhoneVerificationCode={sendPasswordPhoneVerificationCode}
+        disableButton={disableButton}
+        loading={loading}
+        countdown={countdown}
       />
 
       <SecureVerificationModal

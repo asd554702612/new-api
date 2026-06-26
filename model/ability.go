@@ -39,6 +39,9 @@ func GetAllEnableAbilityWithChannels() ([]AbilityWithChannel, error) {
 }
 
 func GetGroupEnabledModels(group string) []string {
+	if models, ok := getGroupEnabledModelsFromCache(group); ok {
+		return models
+	}
 	var models []string
 	// Find distinct models
 	DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true).Distinct("model").Pluck("model", &models)
@@ -46,6 +49,9 @@ func GetGroupEnabledModels(group string) []string {
 }
 
 func GetEnabledModels() []string {
+	if models, ok := getEnabledModelsFromCache(); ok {
+		return models
+	}
 	var models []string
 	// Find distinct models
 	DB.Table("abilities").Where("enabled = ?", true).Distinct("model").Pluck("model", &models)

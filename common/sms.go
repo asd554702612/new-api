@@ -21,6 +21,7 @@ const (
 	PhoneVerificationPurposeRegister       = "sms_register"
 	PhoneVerificationPurposeBind           = "sms_bind"
 	PhoneVerificationPurposeChangePassword = "sms_change_password"
+	PhoneVerificationPurposePasswordReset  = "sms_password_reset"
 
 	defaultIHuyiSMSBaseURL    = "https://api.ihuyi.com/sms/Submit.json"
 	defaultIHuyiSMSTemplateID = "309190"
@@ -54,7 +55,7 @@ var smsProviderFactory = func(settings SMSIHuyiSettings) SMSProvider {
 
 func ResolveSMSIHuyiSettings() SMSIHuyiSettings {
 	settings := SMSIHuyiSettings{
-		Enabled:    optionBool("SMSIHuyiEnabled"),
+		Enabled:    optionBoolWithDefault("SMSIHuyiEnabled", true),
 		Account:    optionString("SMSIHuyiAPIID"),
 		Password:   optionString("SMSIHuyiAPIKey"),
 		TemplateID: optionString("SMSIHuyiTemplateID"),
@@ -91,8 +92,22 @@ func optionBool(key string) bool {
 	return strings.EqualFold(optionString(key), "true")
 }
 
+func optionBoolWithDefault(key string, defaultValue bool) bool {
+	value := optionString(key)
+	if value == "" {
+		return defaultValue
+	}
+	return strings.EqualFold(value, "true")
+}
+
 func IsPhoneVerificationEnabled() bool {
-	return optionBool("PhoneVerificationEnabled")
+	if v := strings.TrimSpace(os.Getenv("PHONE_VERIFICATION_ENABLED")); v != "" {
+		return strings.EqualFold(v, "true")
+	}
+	if v := optionString("PhoneVerificationEnabled"); v != "" {
+		return strings.EqualFold(v, "true")
+	}
+	return PhoneVerificationEnabled
 }
 
 func GenerateNumericVerificationCode(length int) (string, error) {
@@ -143,7 +158,23 @@ func VerifyPhoneVerificationCode(phoneNumber string, code string, purpose string
 	if phoneNumber == "" || code == "" {
 		return false
 	}
-	key := purpose + phoneNumber
+	return verifyPhoneVerificationCodeByKey(phoneNumber, code, purpose)
+}
+
+func verifyPhoneVerificationCodeByKey(phoneNumber string, code string, purpose string) bool {
+	key := verificationCacheKey(phoneNumber, purpose)
+	if RedisEnabled && RDB != nil {
+		value, err := RedisGet(key)
+		if err == nil {
+			if subtle.ConstantTimeCompare([]byte(value), []byte(code)) != 1 {
+				return false
+			}
+			_ = RedisDel(key)
+			deleteVerificationCodeFromMemory(key)
+			return true
+		}
+	}
+
 	verificationMutex.Lock()
 	defer verificationMutex.Unlock()
 	value, okay := verificationMap[key]

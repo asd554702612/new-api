@@ -26,6 +26,7 @@ import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPay
 import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
 import SettingsPaymentGatewayWechatPay from '../../pages/Setting/Payment/SettingsPaymentGatewayWechatPay';
 import SettingsPaymentGatewayAlipay from '../../pages/Setting/Payment/SettingsPaymentGatewayAlipay';
+import SettingsPaymentGatewayCasdoor from '../../pages/Setting/Payment/SettingsPaymentGatewayCasdoor';
 import { API, showError, showSuccess, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
 import RiskAcknowledgementModal from '../common/modals/RiskAcknowledgementModal';
@@ -78,6 +79,17 @@ const PaymentSetting = () => {
     AlipayPageEnabled: true,
     AlipayWapEnabled: true,
     AlipayFaceEnabled: true,
+
+    CasdoorPaymentEnabled: false,
+    CasdoorBaseURL: 'https://login.gepinkeji.com',
+    CasdoorClientID: '',
+    CasdoorClientSecret: '',
+    CasdoorApplicationName: '',
+    CasdoorPaymentProduct: 'external-pay-template',
+    CasdoorPaymentProvider: 'provider_payment_wechat_gepinkeji',
+    CasdoorPaymentCurrency: 'CNY',
+    CasdoorPaymentUnitPrice: 0,
+    CasdoorPaymentMinTopUp: 1,
 
     'payment_setting.compliance_confirmed': false,
     'payment_setting.compliance_terms_version': '',
@@ -189,6 +201,8 @@ const PaymentSetting = () => {
           case 'WechatPayUnitPrice':
           case 'AlipayUnitPrice':
           case 'StripeMinTopUp':
+          case 'CasdoorPaymentUnitPrice':
+          case 'CasdoorPaymentMinTopUp':
             newInputs[item.key] = parseFloat(item.value);
             break;
           default:
@@ -341,6 +355,13 @@ const PaymentSetting = () => {
               </Tabs.TabPane>
               <Tabs.TabPane tab={t('支付宝')} itemKey='alipay-direct'>
                 <SettingsPaymentGatewayAlipay
+                  options={inputs}
+                  refresh={onRefresh}
+                  hideSectionTitle
+                />
+              </Tabs.TabPane>
+              <Tabs.TabPane tab={t('Casdoor 统一支付')} itemKey='casdoor'>
+                <SettingsPaymentGatewayCasdoor
                   options={inputs}
                   refresh={onRefresh}
                   hideSectionTitle

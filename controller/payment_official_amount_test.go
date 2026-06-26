@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -70,4 +71,15 @@ func TestOfficialTopUpUnitPriceFallsBackToEpayPrice(t *testing.T) {
 
 	unitPrice = officialTopUpUnitPrice(-1)
 	require.InDelta(t, 13.14, getOfficialPayMoney(int64(common.QuotaPerUnit*3), "vip", unitPrice), 0.000001)
+}
+
+func TestNewWechatPayTradeNoFitsProviderLimit(t *testing.T) {
+	allowed := regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+	for _, prefix := range []string{"WXPAY", "WXSUB"} {
+		tradeNo := newWechatPayTradeNo(prefix)
+
+		require.LessOrEqual(t, len(tradeNo), 32)
+		require.True(t, allowed.MatchString(tradeNo), tradeNo)
+	}
 }

@@ -30,7 +30,6 @@ import {
   Spin,
   Card,
   Radio,
-  Select,
 } from '@douyinfe/semi-ui';
 const { Text } = Typography;
 import {
@@ -103,6 +102,9 @@ const SystemSetting = () => {
     LinuxDOMinimumTrustLevel: '',
     ServerAddress: '',
     UsageLeaderboardIgnoredUserIds: '[]',
+    ModelSquareSelectionEnabled: '',
+    ModelSquareEnvironment: 'overseas',
+    ModelSquareDomesticDenyRules: 'gpt*\nchatgpt*\no1*\no3*\no4*\n*claude*',
     // SSRF防护配置
     'fetch_setting.enable_ssrf_protection': true,
     'fetch_setting.allow_private_ip': '',
@@ -148,6 +150,7 @@ const SystemSetting = () => {
           case 'fetch_setting.domain_filter_mode':
           case 'fetch_setting.ip_filter_mode':
           case 'fetch_setting.apply_ip_filter_for_domain':
+          case 'ModelSquareSelectionEnabled':
             item.value = toBoolean(item.value);
             break;
           case 'fetch_setting.domain_list':
@@ -402,6 +405,25 @@ const SystemSetting = () => {
     if (options.length > 0) {
       await updateOptions(options);
     }
+  };
+
+  const submitModelSquareSettings = async () => {
+    await updateOptions([
+      {
+        key: 'ModelSquareSelectionEnabled',
+        value: !!inputs.ModelSquareSelectionEnabled,
+      },
+      {
+        key: 'ModelSquareEnvironment',
+        value: inputs.ModelSquareEnvironment || 'overseas',
+      },
+      {
+        key: 'ModelSquareDomesticDenyRules',
+        value:
+          inputs.ModelSquareDomesticDenyRules ||
+          'gpt*\nchatgpt*\no1*\no3*\no4*\n*claude*',
+      },
+    ]);
   };
 
   const handleAddEmail = () => {
@@ -749,6 +771,68 @@ const SystemSetting = () => {
                   ])
                 }
               />
+
+              <Card>
+                <Form.Section text={t('模型广场访问控制')}>
+                  <Banner
+                    type='info'
+                    description={t(
+                      '开启后，用户必须先在模型广场选择模型，API Key 才能调用对应模型；Token 的模型限制仍会继续生效。',
+                    )}
+                    style={{ marginBottom: 20, marginTop: 16 }}
+                  />
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={24} lg={24} xl={24}>
+                      <Form.Checkbox
+                        field='ModelSquareSelectionEnabled'
+                        noLabel
+                        extraText={t(
+                          '未开启时保持现有模型访问行为；开启后未选择模型的用户无法通过 API 调用模型。',
+                        )}
+                      >
+                        {t('启用模型广场自选模型')}
+                      </Form.Checkbox>
+                    </Col>
+                  </Row>
+                  <Row
+                    gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+                  >
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.Select
+                        field='ModelSquareEnvironment'
+                        label={t('部署环境')}
+                        placeholder={t('请选择部署环境')}
+                        optionList={[
+                          { label: t('国外环境'), value: 'overseas' },
+                          { label: t('国内环境'), value: 'domestic' },
+                        ]}
+                        extraText={t(
+                          '国内环境会按下方规则隐藏并拒绝对应模型。',
+                        )}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                      <Form.TextArea
+                        field='ModelSquareDomesticDenyRules'
+                        label={t('国内禁选模型规则')}
+                        placeholder={'gpt*\nchatgpt*\no1*\no3*\no4*\n*claude*'}
+                        autosize={{ minRows: 5, maxRows: 10 }}
+                        extraText={t(
+                          '每行或逗号分隔一个通配符规则，支持 # 注释。',
+                        )}
+                      />
+                    </Col>
+                  </Row>
+                  <Button
+                    onClick={submitModelSquareSettings}
+                    style={{ marginTop: 16 }}
+                  >
+                    {t('更新模型广场访问控制')}
+                  </Button>
+                </Form.Section>
+              </Card>
 
               <Card>
                 <Form.Section text={t('代理设置')}>

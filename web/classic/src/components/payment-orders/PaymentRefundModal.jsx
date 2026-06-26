@@ -18,7 +18,20 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState } from 'react';
-import { Checkbox, Form, Modal } from '@douyinfe/semi-ui';
+import { Checkbox, Form, Modal, Typography } from '@douyinfe/semi-ui';
+
+const { Text } = Typography;
+
+const getAdminRefundDescription = (order, t) => {
+  const provider = order?.payment_provider || order?.payment_method || '';
+  if (provider === 'wechat_pay' || provider === 'alipay' || provider === 'alipay_direct') {
+    return t('原路退款将通过支付渠道处理，成功后会同步回收对应权益。');
+  }
+  if (provider === 'balance') {
+    return t('余额支付退款将返还站内额度并取消对应权益。');
+  }
+  return t('该渠道暂不支持自动退款，请手动处理。');
+};
 
 const PaymentRefundModal = ({ visible, order, mode = 'admin', loading, onCancel, onSubmit, t }) => {
   const [values, setValues] = useState({
@@ -34,7 +47,7 @@ const PaymentRefundModal = ({ visible, order, mode = 'admin', loading, onCancel,
         amount: Number(order.pay_amount || 0),
         reason: '',
         force: false,
-        deduct_balance: false,
+        deduct_balance: true,
       });
     }
   }, [visible, order]);
@@ -48,14 +61,19 @@ const PaymentRefundModal = ({ visible, order, mode = 'admin', loading, onCancel,
 
   return (
     <Modal
-      title={mode === 'admin' ? t('登记退款') : t('申请退款')}
+      title={mode === 'admin' ? t('发起退款') : t('申请退款')}
       visible={visible}
       onCancel={onCancel}
       onOk={submit}
       confirmLoading={loading}
-      okText={mode === 'admin' ? t('登记') : t('提交')}
+      okText={mode === 'admin' ? t('发起') : t('提交')}
     >
       <Form layout='vertical'>
+        {mode === 'admin' && (
+          <Text type='tertiary' size='small'>
+            {getAdminRefundDescription(order, t)}
+          </Text>
+        )}
         {mode === 'admin' && (
           <Form.InputNumber
             label={t('退款金额')}

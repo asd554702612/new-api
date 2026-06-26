@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,9 +12,12 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -32,6 +36,7 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	initModelListColumnNames(t)
 
 	gin.SetMode(gin.TestMode)
+	require.NoError(t, i18n.Init())
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
@@ -43,7 +48,7 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Channel{}, &model.Ability{}, &model.Model{}, &model.Vendor{}, &model.UserModelSelection{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -53,6 +58,21 @@ func setupModelListControllerTestDB(t *testing.T) *gorm.DB {
 	})
 
 	return db
+}
+
+func withModelSquareConfig(t *testing.T, enabled bool, environment string, denyRules string) {
+	t.Helper()
+
+	original := system_setting.GetModelSquareSettings()
+	t.Cleanup(func() {
+		system_setting.SetModelSquareSettingsForTest(original)
+	})
+
+	settings := original
+	settings.SelectionEnabled = enabled
+	settings.Environment = environment
+	settings.DomesticDenyRules = denyRules
+	system_setting.SetModelSquareSettingsForTest(settings)
 }
 
 func initModelListColumnNames(t *testing.T) {
@@ -125,6 +145,16 @@ func withSelfUseModeDisabled(t *testing.T) {
 
 	original := operation_setting.SelfUseModeEnabled
 	operation_setting.SelfUseModeEnabled = false
+	t.Cleanup(func() {
+		operation_setting.SelfUseModeEnabled = original
+	})
+}
+
+func withSelfUseModeEnabled(t *testing.T) {
+	t.Helper()
+
+	original := operation_setting.SelfUseModeEnabled
+	operation_setting.SelfUseModeEnabled = true
 	t.Cleanup(func() {
 		operation_setting.SelfUseModeEnabled = original
 	})
@@ -249,4 +279,239 @@ func TestListModelsTokenLimitIncludesTieredBillingModel(t *testing.T) {
 	require.NotContains(t, ids, "zz-token-tiered-empty-expr-model")
 	require.NotContains(t, ids, "zz-token-tiered-missing-expr-model")
 	require.NotContains(t, ids, "zz-token-unpriced-model")
+}
+
+func TestListModelsRequiresUserModelSelectionWhenEnabled(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	withModelSquareConfig(t, true, "overseas", "")
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1101,
+		Username: "model-square-empty-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "allowed-a", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "allowed-b", ChannelId: 1, Enabled: true},
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 1101)
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	ids := decodeListModelsResponse(t, recorder)
+	require.Empty(t, ids)
+}
+
+func TestListModelsReturnsOnlySelectedModelsAndTokenIntersection(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	withModelSquareConfig(t, true, "overseas", "")
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1102,
+		Username: "model-square-selected-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "selected-a", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "selected-b", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "not-selected", ChannelId: 1, Enabled: true},
+	}).Error)
+	require.NoError(t, model.ReplaceUserModelSelections(1102, []string{"selected-a", "selected-b"}))
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 1102)
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimitEnabled, true)
+	common.SetContextKey(ctx, constant.ContextKeyTokenModelLimit, map[string]bool{
+		"selected-b":    true,
+		"not-selected":  true,
+		"missing-model": true,
+	})
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	ids := decodeListModelsResponse(t, recorder)
+	require.NotContains(t, ids, "selected-a")
+	require.Contains(t, ids, "selected-b")
+	require.NotContains(t, ids, "not-selected")
+	require.NotContains(t, ids, "missing-model")
+	require.Len(t, ids, 1)
+}
+
+func TestListModelsHidesDomesticDeniedModels(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	withModelSquareConfig(t, false, "domestic", "gpt*\no1*\nchatgpt*")
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1103,
+		Username: "model-square-domestic-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "gpt-4o", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "o1-preview", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "deepseek-chat", ChannelId: 1, Enabled: true},
+	}).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 1103)
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	ids := decodeListModelsResponse(t, recorder)
+	require.NotContains(t, ids, "gpt-4o")
+	require.NotContains(t, ids, "o1-preview")
+	require.Contains(t, ids, "deepseek-chat")
+}
+
+func TestDistributeRejectsUnselectedModelWhenSelectionEnabled(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	withModelSquareConfig(t, true, "overseas", "")
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1104,
+		Username: "model-square-distribute-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:     77,
+		Type:   constant.ChannelTypeOpenAI,
+		Status: common.ChannelStatusEnabled,
+		Name:   "test-channel",
+		Key:    "sk-test",
+		Models: "selected-model,blocked-model",
+		Group:  "default",
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "selected-model", ChannelId: 77, Enabled: true},
+		{Group: "default", Model: "blocked-model", ChannelId: 77, Enabled: true},
+	}).Error)
+	require.NoError(t, model.ReplaceUserModelSelections(1104, []string{"selected-model"}))
+
+	body := bytes.NewBufferString(`{"model":"blocked-model","messages":[]}`)
+	recorder := httptest.NewRecorder()
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Set("id", 1104)
+		common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+		common.SetContextKey(c, constant.ContextKeyTokenModelLimitEnabled, false)
+		c.Next()
+	})
+	engine.Use(middleware.BodyStorageCleanup(), middleware.Distribute())
+	engine.POST("/v1/chat/completions", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	engine.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "blocked-model")
+}
+
+func TestDistributeSpecificChannelRejectsUnselectedModelWhenSelectionEnabled(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	withModelSquareConfig(t, true, "overseas", "")
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1106,
+		Username: "model-square-specific-channel-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&model.Channel{
+		Id:     78,
+		Type:   constant.ChannelTypeOpenAI,
+		Status: common.ChannelStatusEnabled,
+		Name:   "specific-channel",
+		Key:    "sk-test",
+		Models: "selected-model,blocked-model",
+		Group:  "default",
+	}).Error)
+	require.NoError(t, model.ReplaceUserModelSelections(1106, []string{"selected-model"}))
+
+	body := bytes.NewBufferString(`{"model":"blocked-model","messages":[]}`)
+	recorder := httptest.NewRecorder()
+	engine := gin.New()
+	engine.Use(func(c *gin.Context) {
+		c.Set("id", 1106)
+		common.SetContextKey(c, constant.ContextKeyTokenSpecificChannelId, "78")
+		common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+		c.Next()
+	})
+	engine.Use(middleware.BodyStorageCleanup(), middleware.Distribute())
+	engine.POST("/v1/chat/completions", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	engine.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "blocked-model")
+}
+
+func TestUpdateUserModelSelectionsFiltersUnavailableAndDomesticDeniedModels(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	withModelSquareConfig(t, true, "domestic", "gpt*\no1*\nchatgpt*")
+
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       1105,
+		Username: "model-square-update-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "gpt-4o", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "deepseek-chat", ChannelId: 1, Enabled: true},
+	}).Error)
+
+	payload := bytes.NewBufferString(`{"models":["gpt-4o","deepseek-chat","missing-model","deepseek-chat"]}`)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPut, "/api/user/model_selections", payload)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	ctx.Set("id", 1105)
+
+	UpdateUserModelSelections(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Success bool     `json:"success"`
+		Data    []string `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, []string{"deepseek-chat"}, response.Data)
+
+	selections, err := model.GetUserModelSelections(1105)
+	require.NoError(t, err)
+	require.Equal(t, []string{"deepseek-chat"}, selections)
 }

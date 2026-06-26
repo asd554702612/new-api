@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { memo, useCallback } from 'react';
-import { Input, Button, Switch, Select, Divider } from '@douyinfe/semi-ui';
+import { Input, Button, Switch, Select, Divider, Tag } from '@douyinfe/semi-ui';
 import { IconSearch, IconCopy, IconFilter } from '@douyinfe/semi-icons';
 
 const SearchActions = memo(
@@ -42,6 +42,9 @@ const SearchActions = memo(
     setViewMode,
     tokenUnit,
     setTokenUnit,
+    modelSquareSelectionEnabled,
+    selectionSaving,
+    saveModelSelections,
     t,
   }) => {
     const supportsCurrencyDisplay = siteDisplayType !== 'TOKENS';
@@ -88,6 +91,22 @@ const SearchActions = memo(
         >
           {t('复制')}
         </Button>
+
+        {modelSquareSelectionEnabled && (
+          <>
+            <Tag color='blue' shape='circle'>
+              {t('已选择 {{count}} 个模型', { count: selectedRowKeys.length })}
+            </Tag>
+            <Button
+              theme='solid'
+              type='primary'
+              loading={selectionSaving}
+              onClick={saveModelSelections}
+            >
+              {t('保存选择')}
+            </Button>
+          </>
+        )}
 
         {!isMobile && (
           <>

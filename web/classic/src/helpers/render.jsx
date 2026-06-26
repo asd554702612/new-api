@@ -83,6 +83,8 @@ import {
   Users,
   ReceiptText,
   RotateCw,
+  Network,
+  Boxes,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -149,6 +151,14 @@ export function getLucideIcon(key, selected = false) {
     case 'luckyWheel':
     case 'rechargeActivity':
       return <RotateCw {...commonProps} color={iconColor} />;
+    case 'adminResources':
+      return <Network {...commonProps} color={iconColor} />;
+    case 'adminModels':
+      return <Boxes {...commonProps} color={iconColor} />;
+    case 'adminBusiness':
+      return <CreditCard {...commonProps} color={iconColor} />;
+    case 'adminSystem':
+      return <Settings {...commonProps} color={iconColor} />;
     case 'channel':
       return <Layers {...commonProps} color={iconColor} />;
     case 'redemption':

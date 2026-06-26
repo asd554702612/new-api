@@ -27,7 +27,7 @@ export const ORDER_STATUS_META = {
   EXPIRED: { color: 'grey', label: '已过期' },
   CANCELLED: { color: 'grey', label: '已取消' },
   REFUND_REQUESTED: { color: 'blue', label: '退款申请中' },
-  REFUNDED: { color: 'purple', label: '已登记退款' },
+  REFUNDED: { color: 'purple', label: '退款已发起' },
   REFUND_FAILED: { color: 'red', label: '退款失败' },
 };
 

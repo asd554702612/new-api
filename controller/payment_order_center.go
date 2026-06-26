@@ -234,11 +234,12 @@ func AdminRefundPaymentOrder(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if err := service.ProcessPaymentOrderRefund(ref, req.Amount, req.Reason, req.Force, req.DeductBalance, "admin"); err != nil {
+	refund, err := service.ProcessPaymentOrderRefund(ref, req.Amount, req.Reason, req.Force, req.DeductBalance, "admin")
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, nil)
+	common.ApiSuccess(c, refund)
 }
 
 func AdminGetPaymentActivityConfig(c *gin.Context) {

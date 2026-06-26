@@ -22,18 +22,6 @@ export const DEFAULT_DOC_URL = 'https://docs.newapi.pro';
 
 export const getHomeLandingData = ({ t, docsLink, systemName }) => {
   const docUrl = docsLink || DEFAULT_DOC_URL;
-  const defaultHomeLinks = [
-    {
-      href: 'https://card.gepinkeji.com',
-      label: t('格品购物'),
-      external: true,
-    },
-    {
-      href: 'https://chat.gepinkeji.com/',
-      label: t('格品生图'),
-      external: true,
-    },
-  ];
 
   return {
     docUrl,
@@ -41,7 +29,6 @@ export const getHomeLandingData = ({ t, docsLink, systemName }) => {
     navItems: [
       { href: '#top', label: t('首页') },
       { href: '#pricing', label: t('定价') },
-      ...defaultHomeLinks,
       { href: docUrl, label: t('API 文档'), external: true },
       { href: '#footer', label: t('技术社群') },
     ],
@@ -230,10 +217,6 @@ export const getHomeLandingData = ({ t, docsLink, systemName }) => {
             { label: t('最佳实践'), href: docUrl, external: true },
             { label: t('API 状态'), href: docUrl, external: true },
           ],
-        },
-        {
-          title: t('链接'),
-          items: defaultHomeLinks,
         },
         {
           title: t('公司'),

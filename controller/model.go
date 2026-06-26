@@ -267,6 +267,14 @@ func ListModels(c *gin.Context, modelType int) {
 			userModelNames = append(userModelNames, modelName)
 		}
 	}
+	userModelNames, err = service.FilterModelNamesByUserSelection(c.GetInt("id"), userModelNames)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "get user model selections failed",
+		})
+		return
+	}
 
 	ownerByModel := map[string]string{}
 	if len(ownerGroups) > 0 {
@@ -288,11 +296,17 @@ func ListModels(c *gin.Context, modelType int) {
 				Type:        "model",
 			}
 		}
+		firstId := ""
+		lastId := ""
+		if len(useranthropicModels) > 0 {
+			firstId = useranthropicModels[0].ID
+			lastId = useranthropicModels[len(useranthropicModels)-1].ID
+		}
 		c.JSON(200, gin.H{
 			"data":     useranthropicModels,
-			"first_id": useranthropicModels[0].ID,
+			"first_id": firstId,
 			"has_more": false,
-			"last_id":  useranthropicModels[len(useranthropicModels)-1].ID,
+			"last_id":  lastId,
 		})
 	case constant.ChannelTypeGemini:
 		userGeminiModels := make([]dto.GeminiModel, len(userOpenAiModels))

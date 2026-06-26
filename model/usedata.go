@@ -34,6 +34,20 @@ func UpdateQuotaData() {
 var CacheQuotaData = make(map[string]*QuotaData)
 var CacheQuotaDataLock = sync.Mutex{}
 
+const quotaDataQueryCacheTTL = 30 * time.Second
+
+type quotaDataQueryCacheEntry struct {
+	data      []*QuotaData
+	expiresAt time.Time
+}
+
+var quotaDataQueryCache = struct {
+	sync.RWMutex
+	items map[string]quotaDataQueryCacheEntry
+}{
+	items: make(map[string]quotaDataQueryCacheEntry),
+}
+
 func logQuotaDataCache(userId int, username string, modelName string, quota int, createdAt int64, tokenUsed int) {
 	key := fmt.Sprintf("%d-%s-%s-%d", userId, username, modelName, createdAt)
 	quotaData, ok := CacheQuotaData[key]
@@ -86,6 +100,7 @@ func SaveQuotaDataCache() {
 		}
 	}
 	CacheQuotaData = make(map[string]*QuotaData)
+	clearQuotaDataQueryCache()
 	common.SysLog(fmt.Sprintf("保存数据看板数据成功，共保存%d条数据", size))
 }
 
@@ -102,26 +117,47 @@ func increaseQuotaData(userId int, username string, modelName string, count int,
 }
 
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+	cacheKey := fmt.Sprintf("username:%s:%d:%d", username, startTime, endTime)
+	if cached, ok := getQuotaDataQueryCache(cacheKey); ok {
+		return cached, nil
+	}
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
 	err = DB.Table("quota_data").Where("username = ? and created_at >= ? and created_at <= ?", username, startTime, endTime).Find(&quotaDatas).Error
+	if err == nil {
+		setQuotaDataQueryCache(cacheKey, quotaDatas)
+	}
 	return quotaDatas, err
 }
 
 func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+	cacheKey := fmt.Sprintf("user:%d:%d:%d", userId, startTime, endTime)
+	if cached, ok := getQuotaDataQueryCache(cacheKey); ok {
+		return cached, nil
+	}
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
 	err = DB.Table("quota_data").Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).Find(&quotaDatas).Error
+	if err == nil {
+		setQuotaDataQueryCache(cacheKey, quotaDatas)
+	}
 	return quotaDatas, err
 }
 
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+	cacheKey := fmt.Sprintf("group-user:%d:%d", startTime, endTime)
+	if cached, ok := getQuotaDataQueryCache(cacheKey); ok {
+		return cached, nil
+	}
 	var quotaDatas []*QuotaData
 	err = DB.Table("quota_data").
 		Select("username, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
 		Where("created_at >= ? and created_at <= ?", startTime, endTime).
 		Group("username, created_at").
 		Find(&quotaDatas).Error
+	if err == nil {
+		setQuotaDataQueryCache(cacheKey, quotaDatas)
+	}
 	return quotaDatas, err
 }
 
@@ -129,10 +165,67 @@ func GetAllQuotaDates(startTime int64, endTime int64, username string) (quotaDat
 	if username != "" {
 		return GetQuotaDataByUsername(username, startTime, endTime)
 	}
+	cacheKey := fmt.Sprintf("all:%d:%d", startTime, endTime)
+	if cached, ok := getQuotaDataQueryCache(cacheKey); ok {
+		return cached, nil
+	}
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
 	// only select model_name, sum(count) as count, sum(quota) as quota, model_name, created_at from quota_data group by model_name, created_at;
 	//err = DB.Table("quota_data").Where("created_at >= ? and created_at <= ?", startTime, endTime).Find(&quotaDatas).Error
 	err = DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at").Find(&quotaDatas).Error
+	if err == nil {
+		setQuotaDataQueryCache(cacheKey, quotaDatas)
+	}
 	return quotaDatas, err
+}
+
+func getQuotaDataQueryCache(key string) ([]*QuotaData, bool) {
+	now := time.Now()
+	quotaDataQueryCache.RLock()
+	entry, ok := quotaDataQueryCache.items[key]
+	quotaDataQueryCache.RUnlock()
+	if !ok {
+		return nil, false
+	}
+	if !entry.expiresAt.After(now) {
+		quotaDataQueryCache.Lock()
+		if current, exists := quotaDataQueryCache.items[key]; exists && !current.expiresAt.After(now) {
+			delete(quotaDataQueryCache.items, key)
+		}
+		quotaDataQueryCache.Unlock()
+		return nil, false
+	}
+	return cloneQuotaDataSlice(entry.data), true
+}
+
+func setQuotaDataQueryCache(key string, data []*QuotaData) {
+	quotaDataQueryCache.Lock()
+	quotaDataQueryCache.items[key] = quotaDataQueryCacheEntry{
+		data:      cloneQuotaDataSlice(data),
+		expiresAt: time.Now().Add(quotaDataQueryCacheTTL),
+	}
+	quotaDataQueryCache.Unlock()
+}
+
+func clearQuotaDataQueryCache() {
+	quotaDataQueryCache.Lock()
+	quotaDataQueryCache.items = make(map[string]quotaDataQueryCacheEntry)
+	quotaDataQueryCache.Unlock()
+}
+
+func cloneQuotaDataSlice(data []*QuotaData) []*QuotaData {
+	if data == nil {
+		return nil
+	}
+	cloned := make([]*QuotaData, 0, len(data))
+	for _, item := range data {
+		if item == nil {
+			cloned = append(cloned, nil)
+			continue
+		}
+		copyItem := *item
+		cloned = append(cloned, &copyItem)
+	}
+	return cloned
 }

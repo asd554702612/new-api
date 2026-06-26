@@ -47,6 +47,7 @@ const routerMap = {
   orders: '/console/orders',
   luckyWheel: '/console/orders/lucky-wheel',
   rechargeActivity: '/console/orders/recharge-activity',
+  adminLog: '/console/admin/log',
   log: '/console/log',
   rankings: '/console/rankings',
   midjourney: '/console/midjourney',
@@ -59,6 +60,22 @@ const routerMap = {
   deployment: '/console/deployment',
   playground: '/console/playground',
   personal: '/console/personal',
+};
+
+const adminParentKeyMap = {
+  channel: 'adminResources',
+  models: 'adminModels',
+  deployment: 'adminModels',
+  subscription: 'adminBusiness',
+  redemption: 'adminBusiness',
+  affiliates: 'adminBusiness',
+  ordersDashboard: 'adminBusiness',
+  orders: 'adminBusiness',
+  luckyWheel: 'adminBusiness',
+  rechargeActivity: 'adminBusiness',
+  adminLog: 'adminSystem',
+  user: 'adminSystem',
+  setting: 'adminSystem',
 };
 
 const SiderBar = ({ onNavigate = () => {} }) => {
@@ -186,88 +203,123 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   }, [t, isModuleVisible, luckyWheelEnabled, rechargeActivityEnabled]);
 
   const adminItems = useMemo(() => {
-    const items = [
+    const filterVisibleItems = (items) =>
+      items.filter((item) => {
+        const configVisible = isModuleVisible('admin', item.itemKey);
+        return item.className !== 'tableHiddle' && configVisible;
+      });
+
+    const groups = [
       {
-        text: t('渠道管理'),
-        itemKey: 'channel',
-        to: '/channel',
-        className: isAdmin() ? '' : 'tableHiddle',
+        text: t('资源接入'),
+        itemKey: 'adminResources',
+        items: [
+          {
+            text: t('渠道管理'),
+            itemKey: 'channel',
+            to: '/channel',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+        ],
       },
       {
-        text: t('订阅管理'),
-        itemKey: 'subscription',
-        to: '/subscription',
-        className: isAdmin() ? '' : 'tableHiddle',
+        text: t('模型能力'),
+        itemKey: 'adminModels',
+        items: [
+          {
+            text: t('模型管理'),
+            itemKey: 'models',
+            to: '/console/models',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+          {
+            text: t('模型部署'),
+            itemKey: 'deployment',
+            to: '/deployment',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+        ],
       },
       {
-        text: t('模型管理'),
-        itemKey: 'models',
-        to: '/console/models',
-        className: isAdmin() ? '' : 'tableHiddle',
+        text: t('商业运营'),
+        itemKey: 'adminBusiness',
+        items: [
+          {
+            text: t('订阅管理'),
+            itemKey: 'subscription',
+            to: '/subscription',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+          {
+            text: t('兑换码管理'),
+            itemKey: 'redemption',
+            to: '/redemption',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+          {
+            text: t('邀请返利'),
+            itemKey: 'affiliates',
+            to: '/console/affiliates',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+          {
+            text: t('支付概览'),
+            itemKey: 'ordersDashboard',
+            to: '/console/orders/dashboard',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+          {
+            text: t('订单管理'),
+            itemKey: 'orders',
+            to: '/console/orders',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+          {
+            text: t('转盘活动'),
+            itemKey: 'luckyWheel',
+            to: '/console/orders/lucky-wheel',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+          {
+            text: t('充值活动'),
+            itemKey: 'rechargeActivity',
+            to: '/console/orders/recharge-activity',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+        ],
       },
       {
-        text: t('模型部署'),
-        itemKey: 'deployment',
-        to: '/deployment',
-        className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('兑换码管理'),
-        itemKey: 'redemption',
-        to: '/redemption',
-        className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('用户管理'),
-        itemKey: 'user',
-        to: '/user',
-        className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('邀请返利'),
-        itemKey: 'affiliates',
-        to: '/console/affiliates',
-        className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('支付概览'),
-        itemKey: 'ordersDashboard',
-        to: '/console/orders/dashboard',
-        className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('订单管理'),
-        itemKey: 'orders',
-        to: '/console/orders',
-        className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('转盘活动'),
-        itemKey: 'luckyWheel',
-        to: '/console/orders/lucky-wheel',
-        className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('充值活动'),
-        itemKey: 'rechargeActivity',
-        to: '/console/orders/recharge-activity',
-        className: isAdmin() ? '' : 'tableHiddle',
-      },
-      {
-        text: t('系统设置'),
-        itemKey: 'setting',
-        to: '/setting',
-        className: isRoot() ? '' : 'tableHiddle',
+        text: t('系统管理'),
+        itemKey: 'adminSystem',
+        items: [
+          {
+            text: t('用户使用日志'),
+            itemKey: 'adminLog',
+            to: '/console/admin/log',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+          {
+            text: t('用户管理'),
+            itemKey: 'user',
+            to: '/user',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+          {
+            text: t('系统设置'),
+            itemKey: 'setting',
+            to: '/setting',
+            className: isRoot() ? '' : 'tableHiddle',
+          },
+        ],
       },
     ];
 
-    // 根据配置过滤项目
-    const filteredItems = items.filter((item) => {
-      const configVisible = isModuleVisible('admin', item.itemKey);
-      return configVisible;
-    });
-
-    return filteredItems;
+    return groups
+      .map((group) => ({
+        ...group,
+        items: filterVisibleItems(group.items),
+      }))
+      .filter((group) => group.items.length > 0);
   }, [isAdmin(), isRoot(), t, isModuleVisible]);
 
   const chatMenuItems = useMemo(() => {
@@ -365,6 +417,13 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     // 如果找到匹配的键，更新选中的键
     if (matchingKey) {
       setSelectedKeys([matchingKey]);
+
+      const parentKey = adminParentKeyMap[matchingKey];
+      if (parentKey) {
+        setOpenedKeys((keys) =>
+          keys.includes(parentKey) ? keys : [...keys, parentKey],
+        );
+      }
     }
   }, [location.pathname, routerMapState]);
 
@@ -413,7 +472,9 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   // 渲染子菜单项
   const renderSubItem = (item) => {
     if (item.items && item.items.length > 0) {
-      const isSelected = selectedKeys.includes(item.itemKey);
+      const isSelected =
+        selectedKeys.includes(item.itemKey) ||
+        item.items.some((subItem) => selectedKeys.includes(subItem.itemKey));
       const textColor = isSelected ? SELECTED_COLOR : 'inherit';
 
       return (
@@ -557,7 +618,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
                 {!collapsed && (
                   <div className='sidebar-group-label'>{t('管理员')}</div>
                 )}
-                {adminItems.map((item) => renderNavItem(item))}
+                {adminItems.map((item) => renderSubItem(item))}
               </div>
             </>
           )}

@@ -19,19 +19,39 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useMemo } from 'react';
 
+const defaultHeaderNavModules = {
+  home: true,
+  console: true,
+  pricing: {
+    enabled: true,
+    requireAuth: false,
+  },
+  docs: true,
+  about: true,
+};
+
+const normalizeHeaderNavModules = (headerNavModules) => {
+  if (!headerNavModules) {
+    return defaultHeaderNavModules;
+  }
+
+  return {
+    ...defaultHeaderNavModules,
+    ...headerNavModules,
+    pricing:
+      typeof headerNavModules.pricing === 'object'
+        ? {
+            ...defaultHeaderNavModules.pricing,
+            ...headerNavModules.pricing,
+          }
+        : (headerNavModules.pricing ?? defaultHeaderNavModules.pricing),
+  };
+};
+
 export const useNavigation = (t, docsLink, headerNavModules) => {
   const mainNavLinks = useMemo(() => {
-    // 默认配置，如果没有传入配置则显示所有模块
-    const defaultModules = {
-      home: true,
-      console: true,
-      pricing: true,
-      docs: true,
-      about: true,
-    };
-
-    // 使用传入的配置或默认配置
-    const modules = headerNavModules || defaultModules;
+    // 后端可能按环境只返回局部覆盖配置，需与默认模块合并。
+    const modules = normalizeHeaderNavModules(headerNavModules);
 
     const allLinks = [
       {
