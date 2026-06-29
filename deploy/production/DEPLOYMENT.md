@@ -64,6 +64,13 @@ MODEL_SQUARE_DOMESTIC_DENY_RULES=gpt*,chatgpt*,o1*,o3*,o4*,*claude*
 ```env
 SQL_DSN=postgresql://new_api:<password>@host.docker.internal:5432/new_api?sslmode=disable
 REDIS_CONN_STRING=redis://:<password>@host.docker.internal:6379/1
+REDIS_DIAL_TIMEOUT_MS=800
+REDIS_READ_TIMEOUT_MS=800
+REDIS_WRITE_TIMEOUT_MS=800
+REDIS_POOL_TIMEOUT_MS=800
+REDIS_MAX_RETRIES=1
+REDIS_MIN_IDLE_CONNS=10
+REDIS_POOL_SIZE=30
 ```
 
 ## PostgreSQL 初始化
@@ -268,6 +275,13 @@ extra_hosts:
 ```env
 SQL_DSN=postgresql://new_api:<redacted>@host.docker.internal:5432/new_api?sslmode=disable
 REDIS_CONN_STRING=redis://:<redacted>@host.docker.internal:6379/1
+REDIS_DIAL_TIMEOUT_MS=800
+REDIS_READ_TIMEOUT_MS=800
+REDIS_WRITE_TIMEOUT_MS=800
+REDIS_POOL_TIMEOUT_MS=800
+REDIS_MAX_RETRIES=1
+REDIS_MIN_IDLE_CONNS=10
+REDIS_POOL_SIZE=30
 ```
 
 真实密钥只保存在服务器 `/opt/services/new-api/.env`。

@@ -25,7 +25,7 @@ func redisEmailVerificationRateLimiter(c *gin.Context) {
 	count, err := rdb.Incr(ctx, key).Result()
 	if err != nil {
 		// fallback
-		memoryEmailVerificationRateLimiter(c)
+		memoryEmailVerificationRateLimiterWithInit(c)
 		return
 	}
 
@@ -69,13 +69,17 @@ func memoryEmailVerificationRateLimiter(c *gin.Context) {
 	c.Next()
 }
 
+func memoryEmailVerificationRateLimiterWithInit(c *gin.Context) {
+	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
+	memoryEmailVerificationRateLimiter(c)
+}
+
 func EmailVerificationRateLimit() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if common.RedisEnabled {
 			redisEmailVerificationRateLimiter(c)
 		} else {
-			inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
-			memoryEmailVerificationRateLimiter(c)
+			memoryEmailVerificationRateLimiterWithInit(c)
 		}
 	}
 }

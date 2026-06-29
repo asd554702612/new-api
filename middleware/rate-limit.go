@@ -25,41 +25,51 @@ func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark st
 	listLength, err := rdb.LLen(ctx, key).Result()
 	if err != nil {
 		fmt.Println(err.Error())
-		c.Status(http.StatusInternalServerError)
-		c.Abort()
+		memoryRateLimiterWithInit(c, maxRequestNum, duration, mark)
 		return
 	}
 	if listLength < int64(maxRequestNum) {
-		rdb.LPush(ctx, key, time.Now().Format(timeFormat))
-		rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration)
+		if err := rdb.LPush(ctx, key, time.Now().Format(timeFormat)).Err(); err != nil {
+			fmt.Println(err.Error())
+			memoryRateLimiterWithInit(c, maxRequestNum, duration, mark)
+			return
+		}
+		_ = rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration).Err()
 	} else {
-		oldTimeStr, _ := rdb.LIndex(ctx, key, -1).Result()
+		oldTimeStr, err := rdb.LIndex(ctx, key, -1).Result()
+		if err != nil {
+			fmt.Println(err.Error())
+			memoryRateLimiterWithInit(c, maxRequestNum, duration, mark)
+			return
+		}
 		oldTime, err := time.Parse(timeFormat, oldTimeStr)
 		if err != nil {
 			fmt.Println(err)
-			c.Status(http.StatusInternalServerError)
-			c.Abort()
+			memoryRateLimiterWithInit(c, maxRequestNum, duration, mark)
 			return
 		}
 		nowTimeStr := time.Now().Format(timeFormat)
 		nowTime, err := time.Parse(timeFormat, nowTimeStr)
 		if err != nil {
 			fmt.Println(err)
-			c.Status(http.StatusInternalServerError)
-			c.Abort()
+			memoryRateLimiterWithInit(c, maxRequestNum, duration, mark)
 			return
 		}
 		// time.Since will return negative number!
 		// See: https://stackoverflow.com/questions/50970900/why-is-time-since-returning-negative-durations-on-windows
 		if int64(nowTime.Sub(oldTime).Seconds()) < duration {
-			rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration)
+			_ = rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration).Err()
 			c.Status(http.StatusTooManyRequests)
 			c.Abort()
 			return
 		} else {
-			rdb.LPush(ctx, key, time.Now().Format(timeFormat))
-			rdb.LTrim(ctx, key, 0, int64(maxRequestNum-1))
-			rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration)
+			if err := rdb.LPush(ctx, key, time.Now().Format(timeFormat)).Err(); err != nil {
+				fmt.Println(err.Error())
+				memoryRateLimiterWithInit(c, maxRequestNum, duration, mark)
+				return
+			}
+			_ = rdb.LTrim(ctx, key, 0, int64(maxRequestNum-1)).Err()
+			_ = rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration).Err()
 		}
 	}
 }
@@ -71,6 +81,11 @@ func memoryRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark s
 		c.Abort()
 		return
 	}
+}
+
+func memoryRateLimiterWithInit(c *gin.Context, maxRequestNum int, duration int64, mark string) {
+	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
+	memoryRateLimiter(c, maxRequestNum, duration, mark)
 }
 
 func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
@@ -158,40 +173,58 @@ func userRedisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, key
 	listLength, err := rdb.LLen(ctx, key).Result()
 	if err != nil {
 		fmt.Println(err.Error())
-		c.Status(http.StatusInternalServerError)
-		c.Abort()
+		userMemoryRateLimiter(c, maxRequestNum, duration, key)
 		return
 	}
 	if listLength < int64(maxRequestNum) {
-		rdb.LPush(ctx, key, time.Now().Format(timeFormat))
-		rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration)
+		if err := rdb.LPush(ctx, key, time.Now().Format(timeFormat)).Err(); err != nil {
+			fmt.Println(err.Error())
+			userMemoryRateLimiter(c, maxRequestNum, duration, key)
+			return
+		}
+		_ = rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration).Err()
 	} else {
-		oldTimeStr, _ := rdb.LIndex(ctx, key, -1).Result()
+		oldTimeStr, err := rdb.LIndex(ctx, key, -1).Result()
+		if err != nil {
+			fmt.Println(err.Error())
+			userMemoryRateLimiter(c, maxRequestNum, duration, key)
+			return
+		}
 		oldTime, err := time.Parse(timeFormat, oldTimeStr)
 		if err != nil {
 			fmt.Println(err)
-			c.Status(http.StatusInternalServerError)
-			c.Abort()
+			userMemoryRateLimiter(c, maxRequestNum, duration, key)
 			return
 		}
 		nowTimeStr := time.Now().Format(timeFormat)
 		nowTime, err := time.Parse(timeFormat, nowTimeStr)
 		if err != nil {
 			fmt.Println(err)
-			c.Status(http.StatusInternalServerError)
-			c.Abort()
+			userMemoryRateLimiter(c, maxRequestNum, duration, key)
 			return
 		}
 		if int64(nowTime.Sub(oldTime).Seconds()) < duration {
-			rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration)
+			_ = rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration).Err()
 			c.Status(http.StatusTooManyRequests)
 			c.Abort()
 			return
 		} else {
-			rdb.LPush(ctx, key, time.Now().Format(timeFormat))
-			rdb.LTrim(ctx, key, 0, int64(maxRequestNum-1))
-			rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration)
+			if err := rdb.LPush(ctx, key, time.Now().Format(timeFormat)).Err(); err != nil {
+				fmt.Println(err.Error())
+				userMemoryRateLimiter(c, maxRequestNum, duration, key)
+				return
+			}
+			_ = rdb.LTrim(ctx, key, 0, int64(maxRequestNum-1)).Err()
+			_ = rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration).Err()
 		}
+	}
+}
+
+func userMemoryRateLimiter(c *gin.Context, maxRequestNum int, duration int64, key string) {
+	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
+	if !inMemoryRateLimiter.Request(key, maxRequestNum, duration) {
+		c.Status(http.StatusTooManyRequests)
+		c.Abort()
 	}
 }
 

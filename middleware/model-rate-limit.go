@@ -86,7 +86,7 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 		allowed, err := checkRedisRateLimit(ctx, rdb, successKey, successMaxCount, duration)
 		if err != nil {
 			fmt.Println("检查成功请求数限制失败:", err.Error())
-			abortWithOpenAiMessage(c, http.StatusInternalServerError, "rate_limit_check_failed")
+			memoryRateLimitHandler(duration, totalMaxCount, successMaxCount)(c)
 			return
 		}
 		if !allowed {
@@ -109,7 +109,7 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 
 			if err != nil {
 				fmt.Println("检查总请求数限制失败:", err.Error())
-				abortWithOpenAiMessage(c, http.StatusInternalServerError, "rate_limit_check_failed")
+				memoryRateLimitHandler(duration, totalMaxCount, successMaxCount)(c)
 				return
 			}
 

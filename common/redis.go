@@ -32,11 +32,7 @@ func InitRedisClient() (err error) {
 		SyncFrequency = 60
 	}
 	SysLog("Redis is enabled")
-	opt, err := redis.ParseURL(os.Getenv("REDIS_CONN_STRING"))
-	if err != nil {
-		FatalLog("failed to parse Redis connection string: " + err.Error())
-	}
-	opt.PoolSize = GetEnvOrDefault("REDIS_POOL_SIZE", 10)
+	opt := ParseRedisOption()
 	RDB = redis.NewClient(opt)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -58,7 +54,36 @@ func ParseRedisOption() *redis.Options {
 	if err != nil {
 		FatalLog("failed to parse Redis connection string: " + err.Error())
 	}
+	applyRedisOptionsFromEnv(opt)
 	return opt
+}
+
+func applyRedisOptionsFromEnv(opt *redis.Options) {
+	opt.PoolSize = GetEnvOrDefault("REDIS_POOL_SIZE", 10)
+	applyRedisDurationEnv("REDIS_DIAL_TIMEOUT_MS", &opt.DialTimeout)
+	applyRedisDurationEnv("REDIS_READ_TIMEOUT_MS", &opt.ReadTimeout)
+	applyRedisDurationEnv("REDIS_WRITE_TIMEOUT_MS", &opt.WriteTimeout)
+	applyRedisDurationEnv("REDIS_POOL_TIMEOUT_MS", &opt.PoolTimeout)
+	applyRedisIntEnv("REDIS_MAX_RETRIES", &opt.MaxRetries)
+	applyRedisIntEnv("REDIS_MIN_IDLE_CONNS", &opt.MinIdleConns)
+}
+
+func applyRedisDurationEnv(key string, target *time.Duration) {
+	if _, ok := os.LookupEnv(key); !ok {
+		return
+	}
+	ms := GetEnvOrDefault(key, int(target.Milliseconds()))
+	if ms <= 0 {
+		return
+	}
+	*target = time.Duration(ms) * time.Millisecond
+}
+
+func applyRedisIntEnv(key string, target *int) {
+	if _, ok := os.LookupEnv(key); !ok {
+		return
+	}
+	*target = GetEnvOrDefault(key, *target)
 }
 
 func RedisSet(key string, value string, expiration time.Duration) error {
