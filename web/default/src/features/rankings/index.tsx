@@ -32,24 +32,33 @@ import {
 import { useRankings } from './hooks/use-rankings'
 import type { RankingPeriod, RankingsTab, UserLeaderboardPeriod } from './types'
 
-const VALID_PERIODS: RankingPeriod[] = ['today', 'week', 'month', 'year', 'all']
-const VALID_TABS: RankingsTab[] = ['models', 'users']
-const VALID_USER_PERIODS: UserLeaderboardPeriod[] = ['today', 'yesterday']
+const VALID_PERIODS = new Set<RankingPeriod>([
+  'today',
+  'week',
+  'month',
+  'year',
+  'all',
+])
+const VALID_TABS = new Set<RankingsTab>(['models', 'users'])
+const VALID_USER_PERIODS = new Set<UserLeaderboardPeriod>([
+  'today',
+  'yesterday',
+])
 
 export function Rankings() {
   const { t } = useTranslation()
   const search = useSearch({ from: '/rankings/' })
   const navigate = useNavigate()
 
-  const period: RankingPeriod = VALID_PERIODS.includes(
+  const period: RankingPeriod = VALID_PERIODS.has(
     search.period as RankingPeriod
   )
     ? (search.period as RankingPeriod)
     : 'week'
-  const tab: RankingsTab = VALID_TABS.includes(search.tab as RankingsTab)
+  const tab: RankingsTab = VALID_TABS.has(search.tab as RankingsTab)
     ? (search.tab as RankingsTab)
     : 'models'
-  const userPeriod: UserLeaderboardPeriod = VALID_USER_PERIODS.includes(
+  const userPeriod: UserLeaderboardPeriod = VALID_USER_PERIODS.has(
     search.user_period as UserLeaderboardPeriod
   )
     ? (search.user_period as UserLeaderboardPeriod)
@@ -77,6 +86,39 @@ export function Rankings() {
       to: '/rankings',
       search: (prev) => ({ ...prev, user_period: next }),
     })
+  }
+
+  const renderModelsContent = () => {
+    if (rankingsQuery.isLoading) {
+      return <RankingsLoading />
+    }
+    if (!snapshot) {
+      const message =
+        rankingsQuery.error instanceof Error
+          ? rankingsQuery.error.message
+          : t('Unable to load rankings data')
+      return <RankingsError message={message} />
+    }
+    return (
+      <div className='space-y-8'>
+        <ModelsSection
+          history={snapshot.models_history}
+          rows={snapshot.models}
+          period={period}
+        />
+
+        <MarketShareSection
+          history={snapshot.vendor_share_history}
+          rows={snapshot.vendors}
+          period={period}
+        />
+
+        <PulseSection
+          movers={snapshot.top_movers}
+          droppers={snapshot.top_droppers}
+        />
+      </div>
+    )
   }
 
   return (
@@ -110,36 +152,7 @@ export function Rankings() {
             </TabsList>
 
             <TabsContent value='models' className='mt-6'>
-              {rankingsQuery.isLoading ? (
-                <RankingsLoading />
-              ) : !snapshot ? (
-                <RankingsError
-                  message={
-                    rankingsQuery.error instanceof Error
-                      ? rankingsQuery.error.message
-                      : t('Unable to load rankings data')
-                  }
-                />
-              ) : (
-                <div className='space-y-8'>
-                  <ModelsSection
-                    history={snapshot.models_history}
-                    rows={snapshot.models}
-                    period={period}
-                  />
-
-                  <MarketShareSection
-                    history={snapshot.vendor_share_history}
-                    rows={snapshot.vendors}
-                    period={period}
-                  />
-
-                  <PulseSection
-                    movers={snapshot.top_movers}
-                    droppers={snapshot.top_droppers}
-                  />
-                </div>
-              )}
+              {renderModelsContent()}
             </TabsContent>
 
             <TabsContent value='users' className='mt-6'>

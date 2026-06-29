@@ -50,6 +50,7 @@ SectionPageLayoutBreadcrumb.displayName = 'SectionPageLayout.Breadcrumb'
 
 export type SectionPageLayoutProps = {
   children: ReactNode
+  fixedContent?: boolean
 }
 
 export function SectionPageLayout(props: SectionPageLayoutProps) {
@@ -67,11 +68,11 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
     const child = node as ReactElement<SlotProps>
     if (child.type === SectionPageLayoutTitle) title = child.props.children
     else if (child.type === SectionPageLayoutActions)
-      actions = child.props.children
+      {actions = child.props.children}
     else if (child.type === SectionPageLayoutContent)
-      content = child.props.children
+      {content = child.props.children}
     else if (child.type === SectionPageLayoutBreadcrumb)
-      breadcrumb = child.props.children
+      {breadcrumb = child.props.children}
   })
 
   return (
@@ -95,7 +96,13 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
           </div>
         </div>
 
-        <div className='min-h-0 flex-1 overflow-auto px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'>
+        <div
+          className={
+            props.fixedContent
+              ? 'min-h-0 flex-1 overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
+              : 'min-h-0 flex-1 overflow-auto px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
+          }
+        >
           {content}
         </div>
 

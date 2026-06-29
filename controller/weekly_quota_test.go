@@ -28,9 +28,7 @@ func setupWeeklyQuotaControllerTestDB(t *testing.T) *gorm.DB {
 
 	gin.SetMode(gin.TestMode)
 	originalPhoneVerificationEnabled := common.PhoneVerificationEnabled
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	common.PhoneVerificationEnabled = false

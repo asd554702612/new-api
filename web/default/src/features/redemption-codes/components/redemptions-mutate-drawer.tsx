@@ -16,12 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
 import { addTimeToDate } from '@/lib/time'
 import { Button } from '@/components/ui/button'
 import {
@@ -60,7 +61,7 @@ import {
   transformFormDataToPayload,
   transformRedemptionToFormDefaults,
 } from '../lib'
-import { type Redemption } from '../types'
+import type { Redemption } from '../types'
 import { useRedemptions } from './redemptions-provider'
 
 type RedemptionsMutateDrawerProps = {
@@ -135,6 +136,18 @@ export function RedemptionsMutateDrawer({
     }
   }
 
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    if (!isUpdate) {
+      const name = form.getValues('name')
+      if (!name?.trim()) {
+        const quota = parseQuotaFromDollars(form.getValues('quota_dollars'))
+        form.setValue('name', formatQuota(quota), { shouldValidate: true })
+      }
+    }
+
+    void form.handleSubmit(onSubmit)(event)
+  }
+
   const handleSetExpiry = (months: number, days: number, hours: number) => {
     const newDate = addTimeToDate(months, days, hours)
     form.setValue('expired_time', newDate)
@@ -177,7 +190,7 @@ export function RedemptionsMutateDrawer({
         <Form {...form}>
           <form
             id='redemption-form'
-            onSubmit={form.handleSubmit(onSubmit)}
+            onSubmit={handleSubmit}
             className={sideDrawerFormClassName()}
           >
             <SideDrawerSection>
@@ -211,7 +224,7 @@ export function RedemptionsMutateDrawer({
                         step={tokensOnly ? 1 : 0.01}
                         placeholder={quotaPlaceholder}
                         onChange={(e) =>
-                          field.onChange(parseFloat(e.target.value) || 0)
+                          field.onChange(Number.parseFloat(e.target.value) || 0)
                         }
                       />
                     </FormControl>
@@ -299,7 +312,7 @@ export function RedemptionsMutateDrawer({
                           max='100'
                           placeholder={t('Number of codes to create')}
                           onChange={(e) =>
-                            field.onChange(parseInt(e.target.value, 10) || 1)
+                            field.onChange(Number.parseInt(e.target.value, 10) || 1)
                           }
                         />
                       </FormControl>

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -29,9 +30,7 @@ func setupUserPhoneControllerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	common.RegisterEnabled = true
@@ -46,7 +45,13 @@ func setupUserPhoneControllerTestDB(t *testing.T) *gorm.DB {
 	require.NoError(t, err)
 	model.DB = db
 	model.LOG_DB = db
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &model.TwoFA{}, &model.TwoFABackupCode{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}, &model.TwoFA{}, &model.TwoFABackupCode{}, &model.CasbinRule{}, &model.AuthzRole{}))
+	wasMaster := common.IsMasterNode
+	common.IsMasterNode = true
+	require.NoError(t, authz.Init(db))
+	t.Cleanup(func() {
+		common.IsMasterNode = wasMaster
+	})
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()

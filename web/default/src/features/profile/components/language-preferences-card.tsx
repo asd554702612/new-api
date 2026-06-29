@@ -91,7 +91,7 @@ export function LanguagePreferencesCard(props: LanguagePreferencesCardProps) {
 
       props.onProfileUpdate()
       toast.success(t('Language preference saved'))
-    } catch (_error) {
+    } catch {
       setCurrentLanguage(previousLanguage)
       await i18n.changeLanguage(previousLanguage)
       toast.error(t('Failed to update settings'))
@@ -105,6 +105,7 @@ export function LanguagePreferencesCard(props: LanguagePreferencesCardProps) {
       title={t('Language Preferences')}
       description={t('Set the language used across the interface')}
       icon={<Languages className='h-4 w-4' />}
+      disableHoverEffect
     >
       <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4'>
         <div className='space-y-1'>
@@ -117,12 +118,10 @@ export function LanguagePreferencesCard(props: LanguagePreferencesCardProps) {
         </div>
         <div className='flex items-center gap-2 sm:min-w-48'>
           <Select
-            items={[
-              ...INTERFACE_LANGUAGE_OPTIONS.map((language) => ({
+            items={INTERFACE_LANGUAGE_OPTIONS.map((language) => ({
                 value: language.code,
                 label: language.label,
-              })),
-            ]}
+              }))}
             value={currentLanguage}
             onValueChange={handleLanguageChange}
             disabled={saving}

@@ -19,9 +19,7 @@ import (
 func setupGpInternalEntitlementTestDB(t *testing.T) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 
 	dsn := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "?mode=memory&cache=shared"
@@ -92,9 +90,9 @@ func TestGetGpInternalEntitlementReturnsWalletPlansAndSubscriptions(t *testing.T
 	}
 	require.NoError(t, model.DB.Create(&plan).Error)
 	require.NoError(t, model.DB.Create(&model.UserSubscription{
-		UserId:     user.Id,
-		PlanId:     plan.Id,
-		Status:     "active",
+		UserId:      user.Id,
+		PlanId:      plan.Id,
+		Status:      "active",
 		AmountTotal: plan.TotalAmount,
 		AmountUsed:  1000000,
 		StartTime:   now - 60,

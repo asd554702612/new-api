@@ -32,7 +32,7 @@ function encodeUrlSafeBase64(value: string): string {
   for (const byte of bytes) {
     binary += String.fromCharCode(byte)
   }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  return btoa(binary).replaceAll(/\+/g, '-').replaceAll(/\//g, '_').replace(/=+$/, '')
 }
 
 export function getServerAddress(): string {
@@ -88,7 +88,7 @@ export function buildCCSwitchUsageScript(): string {
 
 export function buildCCSwitchURL(input: BuildCCSwitchUrlInput): string {
   const serverAddress = input.serverAddress ?? getServerAddress()
-  const endpoint = input.app === 'codex' ? serverAddress + '/v1' : serverAddress
+  const endpoint = input.app === 'codex' ? `${serverAddress  }/v1` : serverAddress
   const params = new URLSearchParams()
   params.set('resource', 'provider')
   params.set('app', input.app)

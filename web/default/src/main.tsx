@@ -63,7 +63,8 @@ const queryClient = new QueryClient({
           [401, 403].includes(error.response?.status ?? 0)
         )
       },
-      refetchOnWindowFocus: import.meta.env.PROD,
+      // Keep focused tabs from silently re-running heavy pages like logs.
+      refetchOnWindowFocus: false,
       staleTime: 10 * 1000, // 10s
     },
     mutations: {
@@ -112,7 +113,7 @@ declare module '@tanstack/react-router' {
 }
 
 // Render the app
-const rootElement = document.getElementById('root')!
+const rootElement = document.querySelector('#root')!
 // Set document.title and favicon from cached status, then refresh from network
 ;(function initSystemBranding() {
   try {

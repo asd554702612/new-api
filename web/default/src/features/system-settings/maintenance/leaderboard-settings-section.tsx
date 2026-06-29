@@ -56,7 +56,7 @@ function parseIgnoredUserIds(value: string): number[] {
 
 function serializeIgnoredUserIds(ids: number[]): string {
   return JSON.stringify(
-    Array.from(new Set(ids.filter((id) => Number.isInteger(id) && id > 0)))
+    [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))]
   )
 }
 

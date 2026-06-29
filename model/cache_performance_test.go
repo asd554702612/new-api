@@ -15,9 +15,8 @@ func setupModelPerformanceCacheTestDB(t *testing.T, tables ...any) *gorm.DB {
 	t.Helper()
 
 	previousMemoryCacheEnabled := common.MemoryCacheEnabled
-	previousUsingSQLite := common.UsingSQLite
-	previousUsingMySQL := common.UsingMySQL
-	previousUsingPostgreSQL := common.UsingPostgreSQL
+	previousMainDatabaseType := common.MainDatabaseType()
+	previousLogDatabaseType := common.LogDatabaseType()
 	previousDB := DB
 	previousLogDB := LOG_DB
 	channelSyncLock.RLock()
@@ -28,9 +27,7 @@ func setupModelPerformanceCacheTestDB(t *testing.T, tables ...any) *gorm.DB {
 	channelSyncLock.RUnlock()
 	t.Cleanup(func() {
 		common.MemoryCacheEnabled = previousMemoryCacheEnabled
-		common.UsingSQLite = previousUsingSQLite
-		common.UsingMySQL = previousUsingMySQL
-		common.UsingPostgreSQL = previousUsingPostgreSQL
+		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
 		DB = previousDB
 		LOG_DB = previousLogDB
 		channelSyncLock.Lock()
@@ -46,9 +43,7 @@ func setupModelPerformanceCacheTestDB(t *testing.T, tables ...any) *gorm.DB {
 	})
 
 	common.MemoryCacheEnabled = true
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	initCol()
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))

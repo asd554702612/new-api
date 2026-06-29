@@ -40,6 +40,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -331,7 +332,7 @@ function formatTokenHint(n: number | string | null | undefined): string {
 function formatNumberDraft(value: number | string): string {
   if (value === '') return ''
   if (typeof value === 'number')
-    return Number.isFinite(value) ? String(value) : '0'
+    {return Number.isFinite(value) ? String(value) : '0'}
   return value
 }
 
@@ -434,12 +435,10 @@ function ConditionRow({ condition, onChange, onRemove }: ConditionRowProps) {
   return (
     <div className='flex items-center gap-2'>
       <Select
-        items={[
-          ...CONDITION_INPUT_OPTIONS.map((option) => ({
+        items={CONDITION_INPUT_OPTIONS.map((option) => ({
             value: option.value,
             label: t(option.labelKey),
-          })),
-        ]}
+          }))}
         value={condition.var}
         onValueChange={(value) =>
           onChange({ ...condition, var: value as TierConditionInput['var'] })
@@ -463,7 +462,7 @@ function ConditionRow({ condition, onChange, onRemove }: ConditionRowProps) {
         </SelectContent>
       </Select>
       <Select
-        items={[...OPS.map((op) => ({ value: op, label: op }))]}
+        items={OPS.map((op) => ({ value: op, label: op }))}
         value={condition.op}
         onValueChange={(value) =>
           onChange({ ...condition, op: value as TierConditionInput['op'] })
@@ -522,7 +521,7 @@ function PriceField({ label, hint, value, onChange }: PriceFieldProps) {
       <Label className='text-muted-foreground text-xs'>{label}</Label>
       <DraftNumberInput
         min={0}
-        step={0.01}
+        step={0.000001}
         value={Number.isFinite(value) ? value : 0}
         onValueChange={onChange}
         className='h-8 w-full'
@@ -990,12 +989,10 @@ function RuleConditionRow({
   const renderTimeCondition = (timeCond: TimeCondition) => (
     <>
       <Select
-        items={[
-          ...TIME_FUNCS.map((fn) => ({
+        items={TIME_FUNCS.map((fn) => ({
             value: fn,
             label: getTimeFuncLabel(fn),
-          })),
-        ]}
+          }))}
         value={timeCond.timeFunc}
         onValueChange={(value) =>
           onChange({ ...timeCond, timeFunc: value as TimeFunc })
@@ -1015,12 +1012,10 @@ function RuleConditionRow({
         </SelectContent>
       </Select>
       <Select
-        items={[
-          ...COMMON_TIMEZONES.map((tz) => ({
+        items={COMMON_TIMEZONES.map((tz) => ({
             value: tz.value,
             label: tz.label,
-          })),
-        ]}
+          }))}
         value={timeCond.timezone}
         onValueChange={(value) =>
           value !== null && onChange({ ...timeCond, timezone: value })
@@ -1043,12 +1038,10 @@ function RuleConditionRow({
         </SelectContent>
       </Select>
       <Select
-        items={[
-          ...matchOptions.map((option) => ({
+        items={matchOptions.map((option) => ({
             value: option.value,
             label: getMatchLabel(option.value),
-          })),
-        ]}
+          }))}
         value={timeCond.mode}
         onValueChange={(v) => v !== null && handleModeChange(v)}
       >
@@ -1109,12 +1102,10 @@ function RuleConditionRow({
         className='w-44'
       />
       <Select
-        items={[
-          ...matchOptions.map((option) => ({
+        items={matchOptions.map((option) => ({
             value: option.value,
             label: getMatchLabel(option.value),
-          })),
-        ]}
+          }))}
         value={phCond.mode}
         onValueChange={(v) => v !== null && handleModeChange(v)}
       >
@@ -1276,7 +1267,7 @@ function RuleGroupCard({
         <Label className='text-xs'>{t('Multiplier')}</Label>
         <DraftNumberInput
           min={0}
-          step={0.01}
+          step={0.000001}
           value={group.multiplier}
           onValueChange={(value) =>
             onChange({ ...group, multiplier: String(value) })
@@ -1309,9 +1300,7 @@ function PresetSection({ applyPreset }: PresetSectionProps) {
   return (
     <div className='space-y-2'>
       <div className='flex items-center gap-2'>
-        <span className='text-muted-foreground text-xs'>
-          {t('Preset templates')}
-        </span>
+        <span className='text-sm font-medium'>{t('Preset templates')}</span>
         {hasMore && (
           <Button
             variant='ghost'
@@ -1562,7 +1551,7 @@ function LlmPromptHelper({ modelName }: LlmPromptHelperProps) {
 
   const prompt = useMemo(() => {
     if (modelName) {
-      return LLM_PROMPT_TEMPLATE + `\n\nCurrent model: ${modelName}`
+      return `${LLM_PROMPT_TEMPLATE  }\n\nCurrent model: ${modelName}`
     }
     return LLM_PROMPT_TEMPLATE
   }, [modelName])
@@ -1770,35 +1759,37 @@ export const TieredPricingEditor = memo(function TieredPricingEditor({
   }, [])
 
   return (
-    <div className='space-y-4'>
-      <div className='flex items-center justify-between gap-2'>
-        <Label className='text-xs'>{t('Editor mode')}</Label>
-        <Select
-          items={[
-            { value: 'visual', label: t('Visual editor') },
-            { value: 'raw', label: t('Expression editor') },
-          ]}
-          value={editorMode}
-          onValueChange={(value) => handleModeChange(value as EditorMode)}
-        >
-          <SelectTrigger className='w-44' size='sm'>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent alignItemWithTrigger={false}>
-            <SelectGroup>
-              <SelectItem value='visual'>{t('Visual editor')}</SelectItem>
-              <SelectItem value='raw'>{t('Expression editor')}</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+    <div className='space-y-5'>
+      <div className='grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end'>
+        <Field className='gap-2'>
+          <FieldLabel>{t('Editor mode')}</FieldLabel>
+          <Select
+            items={[
+              { value: 'visual', label: t('Visual editor') },
+              { value: 'raw', label: t('Expression editor') },
+            ]}
+            value={editorMode}
+            onValueChange={(value) => handleModeChange(value as EditorMode)}
+          >
+            <SelectTrigger className='w-full sm:w-56' size='sm'>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              <SelectGroup>
+                <SelectItem value='visual'>{t('Visual editor')}</SelectItem>
+                <SelectItem value='raw'>{t('Expression editor')}</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+        {editorMode === 'raw' && (
+          <div className='sm:pb-0.5'>
+            <LlmPromptHelper modelName={modelName} />
+          </div>
+        )}
       </div>
 
-      <div className='flex flex-wrap items-start gap-x-4 gap-y-1'>
-        <div className='flex-1'>
-          <PresetSection applyPreset={applyPreset} />
-        </div>
-        {editorMode === 'raw' && <LlmPromptHelper modelName={modelName} />}
-      </div>
+      <PresetSection applyPreset={applyPreset} />
 
       <div className='bg-muted/30 space-y-3 rounded-md border p-3'>
         {editorMode === 'visual' ? (

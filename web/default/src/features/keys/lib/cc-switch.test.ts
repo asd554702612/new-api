@@ -21,7 +21,7 @@ import { describe, test } from 'node:test'
 import { buildCCSwitchURL } from './cc-switch'
 
 function decodeUrlSafeBase64(value: string): string {
-  let normalized = value.replace(/-/g, '+').replace(/_/g, '/')
+  let normalized = value.replaceAll(/-/g, '+').replaceAll(/_/g, '/')
   while (normalized.length % 4) {
     normalized += '='
   }

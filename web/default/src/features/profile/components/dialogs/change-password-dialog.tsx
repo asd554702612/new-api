@@ -21,15 +21,8 @@ import { Loader2, Send } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { Dialog } from '@/components/dialog'
 import { PasswordInput } from '@/components/password-input'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -104,7 +97,7 @@ export function ChangePasswordDialog({
       } else {
         toast.error(response.message || t('Failed to send verification code'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to send verification code'))
     } finally {
       setSendingCode(false)
@@ -169,12 +162,14 @@ export function ChangePasswordDialog({
       } else {
         toast.error(response.message || t('Failed to change password'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to change password'))
     } finally {
       setLoading(false)
     }
   }
+
+  const formId = 'change-password-form'
 
   return (
     <Dialog
@@ -183,139 +178,127 @@ export function ChangePasswordDialog({
         onOpenChange(nextOpen)
         if (!nextOpen) resetForm()
       }}
+      title={t('Change Password')}
+      description={
+        <>
+          {t('Update your password for account:')} <strong>{username}</strong>
+        </>
+      }
+      contentClassName='sm:max-w-md'
+      contentHeight='auto'
+      bodyClassName='space-y-4'
+      footer={
+        <>
+          <Button
+            type='button'
+            variant='outline'
+            onClick={() => onOpenChange(false)}
+            disabled={loading}
+          >
+            {t('Cancel')}
+          </Button>
+          <Button type='submit' form={formId} disabled={loading}>
+            {loading && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
+            {loading ? t('Changing...') : t('Change Password')}
+          </Button>
+        </>
+      }
     >
-      <DialogContent className='sm:max-w-md'>
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>{t('Change Password')}</DialogTitle>
-            <DialogDescription>
-              {t('Update your password for account:')}{' '}
-              <strong>{username}</strong>
-            </DialogDescription>
-          </DialogHeader>
+      <form id={formId} onSubmit={handleSubmit} className='space-y-4'>
+        <Tabs
+          value={verificationMethod}
+          onValueChange={(value) =>
+            setVerificationMethod(value as 'password' | 'phone')
+          }
+        >
+          <TabsList className='grid w-full grid-cols-2'>
+            <TabsTrigger value='password'>{t('Current password')}</TabsTrigger>
+            <TabsTrigger value='phone' disabled={!phoneNumber}>
+              {t('Phone code')}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-          <div className='my-6 space-y-4'>
-            <Tabs
-              value={verificationMethod}
-              onValueChange={(value) =>
-                setVerificationMethod(value as 'password' | 'phone')
-              }
-            >
-              <TabsList className='grid w-full grid-cols-2'>
-                <TabsTrigger value='password'>
-                  {t('Current password')}
-                </TabsTrigger>
-                <TabsTrigger value='phone' disabled={!phoneNumber}>
-                  {t('Phone code')}
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-
-            <div className='space-y-2'>
-              {verificationMethod === 'password' ? (
-                <>
-                  <Label htmlFor='currentPassword'>
-                    {t('Current Password')}
-                  </Label>
-                  <PasswordInput
-                    id='currentPassword'
-                    value={formData.originalPassword}
-                    onChange={(e) =>
-                      handleChange('originalPassword', e.target.value)
-                    }
-                    disabled={loading}
-                    required
-                    autoComplete='current-password'
-                  />
-                </>
-              ) : (
-                <>
-                  <Label htmlFor='phoneVerificationCode'>
-                    {t('SMS verification code')}
-                  </Label>
-                  <div className='flex gap-2'>
-                    <Input
-                      id='phoneVerificationCode'
-                      value={formData.phoneVerificationCode}
-                      onChange={(e) =>
-                        handleChange('phoneVerificationCode', e.target.value)
-                      }
-                      disabled={loading}
-                      autoComplete='one-time-code'
-                      placeholder={t('Enter code')}
-                    />
-                    <Button
-                      type='button'
-                      variant='outline'
-                      className='shrink-0 gap-1.5'
-                      onClick={handleSendPhoneCode}
-                      disabled={
-                        loading || sendingCode || isActive || !phoneNumber
-                      }
-                    >
-                      {sendingCode ? (
-                        <Loader2 className='h-4 w-4 animate-spin' />
-                      ) : (
-                        <Send className='h-4 w-4' />
-                      )}
-                      {isActive
-                        ? t('Resend ({{seconds}}s)', { seconds: secondsLeft })
-                        : t('Send code')}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className='space-y-2'>
-              <Label htmlFor='newPassword'>{t('New Password')}</Label>
+        <div className='space-y-2'>
+          {verificationMethod === 'password' ? (
+            <>
+              <Label htmlFor='currentPassword'>{t('Current Password')}</Label>
               <PasswordInput
-                id='newPassword'
-                value={formData.newPassword}
-                onChange={(e) => handleChange('newPassword', e.target.value)}
-                disabled={loading}
-                required
-                minLength={8}
-                autoComplete='new-password'
-              />
-              <p className='text-muted-foreground text-xs'>
-                {t('Must be at least 8 characters')}
-              </p>
-            </div>
-
-            <div className='space-y-2'>
-              <Label htmlFor='confirmPassword'>
-                {t('Confirm New Password')}
-              </Label>
-              <PasswordInput
-                id='confirmPassword'
-                value={formData.confirmPassword}
+                id='currentPassword'
+                value={formData.originalPassword}
                 onChange={(e) =>
-                  handleChange('confirmPassword', e.target.value)
+                  handleChange('originalPassword', e.target.value)
                 }
                 disabled={loading}
                 required
-                autoComplete='new-password'
+                autoComplete='current-password'
               />
-            </div>
-          </div>
+            </>
+          ) : (
+            <>
+              <Label htmlFor='phoneVerificationCode'>
+                {t('SMS verification code')}
+              </Label>
+              <div className='flex gap-2'>
+                <Input
+                  id='phoneVerificationCode'
+                  value={formData.phoneVerificationCode}
+                  onChange={(e) =>
+                    handleChange('phoneVerificationCode', e.target.value)
+                  }
+                  disabled={loading}
+                  autoComplete='one-time-code'
+                  placeholder={t('Enter code')}
+                />
+                <Button
+                  type='button'
+                  variant='outline'
+                  className='shrink-0 gap-1.5'
+                  onClick={handleSendPhoneCode}
+                  disabled={loading || sendingCode || isActive || !phoneNumber}
+                >
+                  {sendingCode ? (
+                    <Loader2 className='h-4 w-4 animate-spin' />
+                  ) : (
+                    <Send className='h-4 w-4' />
+                  )}
+                  {isActive
+                    ? t('Resend ({{seconds}}s)', { seconds: secondsLeft })
+                    : t('Send code')}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
 
-          <DialogFooter>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={() => onOpenChange(false)}
-              disabled={loading}
-            >
-              {t('Cancel')}
-            </Button>
-            <Button type='submit' disabled={loading}>
-              {loading && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-              {loading ? t('Changing...') : t('Change Password')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
+        <div className='space-y-2'>
+          <Label htmlFor='newPassword'>{t('New Password')}</Label>
+          <PasswordInput
+            id='newPassword'
+            value={formData.newPassword}
+            onChange={(e) => handleChange('newPassword', e.target.value)}
+            disabled={loading}
+            required
+            minLength={8}
+            autoComplete='new-password'
+          />
+          <p className='text-muted-foreground text-xs'>
+            {t('Must be at least 8 characters')}
+          </p>
+        </div>
+
+        <div className='space-y-2'>
+          <Label htmlFor='confirmPassword'>{t('Confirm New Password')}</Label>
+          <PasswordInput
+            id='confirmPassword'
+            value={formData.confirmPassword}
+            onChange={(e) => handleChange('confirmPassword', e.target.value)}
+            disabled={loading}
+            required
+            autoComplete='new-password'
+          />
+        </div>
+      </form>
     </Dialog>
   )
 }

@@ -89,7 +89,7 @@ export function PhoneBindDialog({
       } else {
         toast.error(response.message || t('Failed to send verification code'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to send verification code'))
     } finally {
       setSendingCode(false)
@@ -119,7 +119,7 @@ export function PhoneBindDialog({
       } else {
         toast.error(response.message || t('Failed to update phone number'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to update phone number'))
     } finally {
       setLoading(false)

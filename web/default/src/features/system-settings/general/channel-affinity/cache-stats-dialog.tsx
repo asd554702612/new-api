@@ -20,12 +20,7 @@ import { useEffect, useMemo, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatTimestampToDate } from '@/lib/format'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog } from '@/components/dialog'
 import { getAffinityUsageCache } from './api'
 
 function formatRate(hit: number, total: number): string {
@@ -89,34 +84,34 @@ export function CacheStatsDialog(props: Props) {
     const total = Number(s.total || 0)
 
     if (s.rule_name || props.target?.rule_name)
-      data.push({
+      {data.push({
         key: t('Rule'),
         value: (s.rule_name || props.target?.rule_name || '') as string,
-      })
+      })}
     if (s.using_group || props.target?.using_group)
-      data.push({
+      {data.push({
         key: t('Group'),
         value: (s.using_group || props.target?.using_group || '') as string,
-      })
+      })}
     if (props.target?.key_hint)
-      data.push({ key: t('Key Summary'), value: props.target.key_hint })
+      {data.push({ key: t('Key Summary'), value: props.target.key_hint })}
     if (s.key_fp || props.target?.key_fp)
-      data.push({
+      {data.push({
         key: t('Key Fingerprint'),
         value: (s.key_fp || props.target?.key_fp || '') as string,
-      })
+      })}
     if (Number(s.window_seconds || 0) > 0)
-      data.push({ key: t('TTL (seconds)'), value: s.window_seconds as number })
+      {data.push({ key: t('TTL (seconds)'), value: s.window_seconds as number })}
     if (total > 0)
-      data.push({
+      {data.push({
         key: t('Hit Rate'),
         value: `${hit}/${total} (${formatRate(hit, total)})`,
-      })
+      })}
     if (Number(s.last_seen_at || 0) > 0)
-      data.push({
+      {data.push({
         key: t('Last Seen'),
         value: formatTimestampToDate(s.last_seen_at as number | undefined),
-      })
+      })}
 
     const promptTokens = Number(s.prompt_tokens || 0)
     const cachedTokens = Number(s.cached_tokens || 0)
@@ -124,49 +119,53 @@ export function CacheStatsDialog(props: Props) {
     const totalTokens = Number(s.total_tokens || 0)
 
     if (promptTokens > 0)
-      data.push({ key: 'Prompt tokens', value: promptTokens })
+      {data.push({ key: 'Prompt tokens', value: promptTokens })}
     if (cachedTokens > 0)
-      data.push({ key: 'Cached tokens', value: cachedTokens })
+      {data.push({ key: 'Cached tokens', value: cachedTokens })}
     if (completionTokens > 0)
-      data.push({ key: 'Completion tokens', value: completionTokens })
+      {data.push({ key: 'Completion tokens', value: completionTokens })}
     if (totalTokens > 0) data.push({ key: 'Total tokens', value: totalTokens })
 
     return data
   }, [stats, props.target, t])
 
   return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className='sm:max-w-lg'>
-        <DialogHeader>
-          <DialogTitle>{t('Channel Affinity: Upstream Cache Hit')}</DialogTitle>
-        </DialogHeader>
-        <p className='text-muted-foreground text-xs'>
-          {t(
-            'Hit criteria: If cached tokens exist in usage, it counts as a hit.'
-          )}
-        </p>
-        {loading ? (
-          <div className='text-muted-foreground py-8 text-center text-sm'>
-            {t('Loading...')}
-          </div>
-        ) : rows.length > 0 ? (
-          <div className='space-y-2'>
-            {rows.map((row) => (
-              <div
-                key={row.key}
-                className='flex justify-between border-b pb-1 text-sm'
-              >
-                <span className='text-muted-foreground'>{row.key}</span>
-                <span className='font-medium'>{row.value}</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className='text-muted-foreground py-8 text-center text-sm'>
-            {t('No data available')}
-          </div>
+    <Dialog
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      title={t('Channel Affinity: Upstream Cache Hit')}
+      contentClassName='sm:max-w-lg'
+      contentHeight='auto'
+      bodyClassName='space-y-4'
+    >
+      <p className='text-muted-foreground text-xs'>
+        {t(
+          'Hit criteria: If cached tokens exist in usage, it counts as a hit.'
         )}
-      </DialogContent>
+      </p>
+      {loading ? (
+        <div className='text-muted-foreground py-8 text-center text-sm'>
+          {t('Loading...')}
+        </div>
+      ) : rows.length > 0 ? (
+        <div className='space-y-2'>
+          {rows.map((row) => (
+            <div
+              key={row.key}
+              className='flex justify-between gap-4 border-b pb-1 text-sm'
+            >
+              <span className='text-muted-foreground'>{row.key}</span>
+              <span className='text-right font-medium break-all'>
+                {row.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className='text-muted-foreground py-8 text-center text-sm'>
+          {t('No data available')}
+        </div>
+      )}
     </Dialog>
   )
 }
