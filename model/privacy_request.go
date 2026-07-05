@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -315,6 +316,9 @@ func UpdatePrivacyRequestByAdminAndDeleteUser(id int, input PrivacyRequestAdminU
 	if deletedUserId > 0 {
 		if err := invalidateUserCache(deletedUserId); err != nil {
 			return nil, err
+		}
+		if err := InvalidateUserTokensCache(deletedUserId); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate tokens cache for user %d: %s", deletedUserId, err.Error()))
 		}
 	}
 	return &updated, nil

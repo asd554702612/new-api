@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -29,6 +29,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { ClipboardCheck, MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import Turnstile from 'react-turnstile';
 import { API, copy, showError, showSuccess } from '../../helpers';
 
 const INITIAL_FORM = {
@@ -50,6 +51,9 @@ const Feedback = () => {
   const [form, setForm] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
   const [trackingCode, setTrackingCode] = useState('');
+  const [turnstileEnabled, setTurnstileEnabled] = useState(false);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const typeOptions = useMemo(
     () => [
@@ -63,6 +67,19 @@ const Feedback = () => {
   const updateField = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  useEffect(() => {
+    API.get('/api/status', { disableDuplicate: true })
+      .then((res) => {
+        const status = res?.data?.data || {};
+        setTurnstileEnabled(Boolean(status.turnstile_check));
+        setTurnstileSiteKey(status.turnstile_site_key || '');
+      })
+      .catch(() => {
+        setTurnstileEnabled(false);
+        setTurnstileSiteKey('');
+      });
+  }, []);
 
   const validateForm = () => {
     if (!form.contact_name.trim()) {
@@ -79,6 +96,10 @@ const Feedback = () => {
     }
     if (!form.content.trim()) {
       showError(t('请填写内容'));
+      return false;
+    }
+    if (turnstileEnabled && !turnstileToken) {
+      showError(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
       return false;
     }
     return true;
@@ -98,7 +119,9 @@ const Feedback = () => {
         title: form.title.trim(),
         content: form.content.trim(),
       };
-      const res = await API.post('/api/feedback', payload);
+      const res = await API.post('/api/feedback', payload, {
+        params: turnstileEnabled ? { turnstile: turnstileToken } : undefined,
+      });
       const { success, message } = res.data || {};
       if (success === false) {
         showError(message || t('提交失败，请重试'));
@@ -113,6 +136,7 @@ const Feedback = () => {
         '';
       setTrackingCode(code);
       setForm(INITIAL_FORM);
+      setTurnstileToken('');
       showSuccess(t('提交成功'));
     } catch (error) {
       showError(error?.message || t('提交失败，请重试'));
@@ -223,6 +247,16 @@ const Feedback = () => {
                 placeholder={t('请填写具体情况、诉求或建议')}
               />
             </div>
+
+            {turnstileEnabled && turnstileSiteKey && (
+              <div className='w-full flex justify-center'>
+                <Turnstile
+                  sitekey={turnstileSiteKey}
+                  onVerify={setTurnstileToken}
+                  onExpire={() => setTurnstileToken('')}
+                />
+              </div>
+            )}
 
             <div className='w-full flex justify-end pt-2'>
               <Button type='primary' loading={loading} onClick={submitFeedback}>

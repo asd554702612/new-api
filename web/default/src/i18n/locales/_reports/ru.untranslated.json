@@ -40,6 +40,7 @@
   "Official WeChat Pay direct connection": "Official WeChat Pay direct connection",
   "Optional browser return URL for H5 payments": "Optional browser return URL for H5 payments",
   "Password must be between 8 and 20 characters": "Password must be between 8 and 20 characters",
+  "PromptGate": "PromptGate",
   "Protect login and registration with Cloudflare Turnstile": "Protect login and registration with Cloudflare Turnstile",
   "Received amount": "Received amount",
   "Result": "Result",
