@@ -34,6 +34,13 @@ export const STATIC_I18N_KEYS = [
   'Channel health checks',
   'Request retry',
 
+  // Compliance permission catalog
+  'Compliance',
+  'Read compliance records',
+  'View privacy requests and public feedback records.',
+  'Handle compliance records',
+  'Update privacy requests and public feedback handling status.',
+
   // System settings sidebar
   'System Administration',
   'General',

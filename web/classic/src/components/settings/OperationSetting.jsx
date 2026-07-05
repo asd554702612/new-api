@@ -28,6 +28,7 @@ import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
 import SettingsSMS from '../../pages/Setting/Operation/SettingsSMS';
+import SettingsPromptGate from '../../pages/Setting/Operation/SettingsPromptGate';
 import { API, showError, toBoolean } from '../../helpers';
 
 const OperationSetting = () => {
@@ -61,6 +62,15 @@ const OperationSetting = () => {
     SMSIHuyiAPIID: '',
     SMSIHuyiAPIKey: '',
     SMSIHuyiTemplateID: '',
+
+    /* PromptGate 设置 */
+    'promptgate.enabled': false,
+    'promptgate.base_url': '',
+    'promptgate.api_key': '',
+    'promptgate.input_enabled': true,
+    'promptgate.output_enabled': true,
+    'promptgate.stream_output_enabled': true,
+    'promptgate.stream_fail_closed': true,
 
     /* 顶栏模块管理 */
     HeaderNavModules: '',
@@ -145,6 +155,10 @@ const OperationSetting = () => {
         {/* 短信与手机号验证设置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsSMS options={inputs} refresh={onRefresh} />
+        </Card>
+        {/* PromptGate 设置 */}
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsPromptGate options={inputs} refresh={onRefresh} />
         </Card>
         {/* 顶栏模块管理 */}
         <div style={{ marginTop: '10px' }}>

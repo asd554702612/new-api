@@ -150,6 +150,12 @@ export function SidebarModulesSection({
         title: t('Subscription Management'),
         description: t('Manage subscription plans and pricing.'),
       },
+      compliance: {
+        title: t('Compliance'),
+        description: t(
+          'Handle personal information requests and public complaints.'
+        ),
+      },
     },
   }
   const formDefaults = useMemo(() => config, [config])

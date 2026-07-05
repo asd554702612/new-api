@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { SystemBehaviorSection } from '../general/system-behavior-section'
 import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
+import { PromptGateSettingsSection } from '../integrations/promptgate-settings-section'
 import { SMSSettingsSection } from '../integrations/sms-settings-section'
 import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
@@ -103,6 +104,25 @@ const OPERATIONS_SECTIONS = [
           WorkerValidKey: settings.WorkerValidKey,
           WorkerAllowHttpImageRequestEnabled:
             settings.WorkerAllowHttpImageRequestEnabled,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'promptgate',
+    titleKey: 'PromptGate',
+    build: (settings: OperationsSettings) => (
+      <PromptGateSettingsSection
+        defaultValues={{
+          'promptgate.enabled': settings['promptgate.enabled'],
+          'promptgate.base_url': settings['promptgate.base_url'],
+          'promptgate.api_key': settings['promptgate.api_key'],
+          'promptgate.input_enabled': settings['promptgate.input_enabled'],
+          'promptgate.output_enabled': settings['promptgate.output_enabled'],
+          'promptgate.stream_output_enabled':
+            settings['promptgate.stream_output_enabled'],
+          'promptgate.stream_fail_closed':
+            settings['promptgate.stream_fail_closed'],
         }}
       />
     ),

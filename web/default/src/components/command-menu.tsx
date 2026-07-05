@@ -17,12 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import React from 'react'
-import { useLocation, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import { ArrowRight, ChevronRight, Laptop, Moon, Sun } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSearch } from '@/context/search-provider'
 import { useTheme } from '@/context/theme-provider'
-import { useSidebarData } from '@/hooks/use-sidebar-data'
+import { useSidebarView } from '@/hooks/use-sidebar-view'
 import {
   Command,
   CommandDialog,
@@ -33,7 +33,6 @@ import {
   CommandList,
   CommandSeparator,
 } from '@/components/ui/command'
-import { getNavGroupsForPath } from './layout/lib/sidebar-view-registry'
 import { ScrollArea } from './ui/scroll-area'
 
 export function CommandMenu() {
@@ -41,12 +40,7 @@ export function CommandMenu() {
   const navigate = useNavigate()
   const { setTheme } = useTheme()
   const { open, setOpen } = useSearch()
-  const { pathname } = useLocation()
-  const sidebarData = useSidebarData()
-
-  // Use the active nested sidebar view's nav groups when one matches
-  // the current URL; otherwise fall back to the root navigation.
-  const navGroups = getNavGroupsForPath(pathname, t) ?? sidebarData.navGroups
+  const { navGroups } = useSidebarView()
 
   const runCommand = React.useCallback(
     (command: () => unknown) => {
@@ -66,8 +60,8 @@ export function CommandMenu() {
             {navGroups.map((group) => (
               <CommandGroup key={group.id || group.title} heading={group.title}>
                 {group.items.map((navItem, i) => {
-                  if (navItem.url)
-                    {return (
+                  if (navItem.url) {
+                    return (
                       <CommandItem
                         key={`${navItem.url}-${i}`}
                         value={navItem.title}
@@ -80,7 +74,8 @@ export function CommandMenu() {
                         </div>
                         {navItem.title}
                       </CommandItem>
-                    )}
+                    )
+                  }
 
                   return navItem.items?.map((subItem, i) => (
                     <CommandItem

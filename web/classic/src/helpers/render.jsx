@@ -85,6 +85,7 @@ import {
   RotateCw,
   Network,
   Boxes,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -176,6 +177,8 @@ export function getLucideIcon(key, selected = false) {
       return <Users {...commonProps} color={iconColor} />;
     case 'setting':
       return <Settings {...commonProps} color={iconColor} />;
+    case 'compliance':
+      return <ShieldCheck {...commonProps} color={iconColor} />;
     default:
       return <CircleUser {...commonProps} color={iconColor} />;
   }

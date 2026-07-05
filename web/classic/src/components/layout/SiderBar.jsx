@@ -41,6 +41,7 @@ const routerMap = {
   luckyWheelUser: '/console/lucky-wheel',
   rechargeActivityUser: '/console/recharge-activity',
   user: '/console/user',
+  compliance: '/console/compliance',
   affiliates: '/console/affiliates',
   subscription: '/console/subscription',
   ordersDashboard: '/console/orders/dashboard',
@@ -75,6 +76,7 @@ const adminParentKeyMap = {
   rechargeActivity: 'adminBusiness',
   adminLog: 'adminSystem',
   user: 'adminSystem',
+  compliance: 'adminSystem',
   setting: 'adminSystem',
 };
 
@@ -302,6 +304,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             text: t('用户管理'),
             itemKey: 'user',
             to: '/user',
+            className: isAdmin() ? '' : 'tableHiddle',
+          },
+          {
+            text: t('合规处理'),
+            itemKey: 'compliance',
+            to: '/console/compliance',
             className: isAdmin() ? '' : 'tableHiddle',
           },
           {

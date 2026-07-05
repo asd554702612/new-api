@@ -40,6 +40,7 @@ import UserInfoHeader from './personal/components/UserInfoHeader';
 import AccountManagement from './personal/cards/AccountManagement';
 import NotificationSettings from './personal/cards/NotificationSettings';
 import PersonalInfoCard from './personal/cards/PersonalInfoCard';
+import PersonalInfoRightsCard from './personal/cards/PersonalInfoRightsCard';
 import PreferencesSettings from './personal/cards/PreferencesSettings';
 import CheckinCalendar from './personal/cards/CheckinCalendar';
 import EmailBindModal from './personal/modals/EmailBindModal';
@@ -636,6 +637,10 @@ const PersonalSetting = () => {
               onChangePhone={() => setShowPhoneBindModal(true)}
               onChangePassword={() => setShowChangePasswordModal(true)}
             />
+          </div>
+
+          <div className='mt-4 md:mt-6'>
+            <PersonalInfoRightsCard t={t} />
           </div>
 
           {/* 签到日历 - 仅在启用时显示 */}

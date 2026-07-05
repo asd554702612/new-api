@@ -21,6 +21,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/promptgate"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -142,6 +143,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}
 
+	if apiErr := checkPromptGateInput(c, relayInfo, meta); apiErr != nil {
+		newAPIError = apiErr
+		return
+	}
+
 	tokens, err := service.EstimateRequestToken(c, meta, relayInfo)
 	if err != nil {
 		newAPIError = types.NewError(err, types.ErrorCodeCountTokenFailed)
@@ -245,6 +251,49 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		gopool.Go(func() {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
 		})
+	}
+}
+
+func checkPromptGateInput(c *gin.Context, relayInfo *relaycommon.RelayInfo, meta *types.TokenCountMeta) *types.NewAPIError {
+	if relayInfo == nil || !promptGateSupportsTextInput(relayInfo.RelayMode) {
+		return nil
+	}
+	client := promptgate.NewClientFromEnv()
+	if !client.InputEnabled() || meta == nil || strings.TrimSpace(meta.CombineText) == "" {
+		return nil
+	}
+	response, err := client.CheckContent(c.Request.Context(), promptgate.CheckRequest{
+		Content:        meta.CombineText,
+		Direction:      "input",
+		ContentType:    "text",
+		ConversationID: c.GetString(common.RequestIdKey),
+		SubjectUserID:  fmt.Sprintf("%d", c.GetInt("id")),
+		SubjectIP:      c.ClientIP(),
+		Metadata: map[string]string{
+			"source": "new-api",
+			"route":  c.Request.URL.Path,
+			"model":  relayInfo.OriginModelName,
+			"stream": fmt.Sprintf("%t", relayInfo.IsStream),
+		},
+	})
+	if err != nil {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodePromptBlocked, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+	}
+	if response.Decision == "" || response.Decision == "allow" {
+		return nil
+	}
+	return types.NewErrorWithStatusCode(fmt.Errorf("%s trace_id=%s", client.SafeMessage(), response.TraceID), types.ErrorCodePromptBlocked, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+}
+
+func promptGateSupportsTextInput(relayMode int) bool {
+	switch relayMode {
+	case relayconstant.RelayModeChatCompletions,
+		relayconstant.RelayModeCompletions,
+		relayconstant.RelayModeResponses,
+		relayconstant.RelayModeResponsesCompact:
+		return true
+	default:
+		return false
 	}
 }
 

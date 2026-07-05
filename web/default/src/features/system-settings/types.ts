@@ -375,6 +375,13 @@ export type OperationsSettings = {
   WorkerUrl: string
   WorkerValidKey: string
   WorkerAllowHttpImageRequestEnabled: boolean
+  'promptgate.enabled': boolean
+  'promptgate.base_url': string
+  'promptgate.api_key': string
+  'promptgate.input_enabled': boolean
+  'promptgate.output_enabled': boolean
+  'promptgate.stream_output_enabled': boolean
+  'promptgate.stream_fail_closed': boolean
   LogConsumeEnabled: boolean
   'performance_setting.disk_cache_enabled': boolean
   'performance_setting.disk_cache_threshold_mb': number

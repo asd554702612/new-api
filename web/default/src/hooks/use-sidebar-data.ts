@@ -29,12 +29,17 @@ import {
   Radio,
   ServerCog,
   Settings,
+  ShieldCheck,
   Ticket,
   User,
   Users,
   Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+} from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 import type { SidebarData } from '@/components/layout/types'
 
@@ -142,6 +147,15 @@ export function useSidebarData(): SidebarData {
             title: t('Subscriptions'),
             url: '/subscriptions',
             icon: CreditCard,
+          },
+          {
+            title: t('Compliance'),
+            url: '/compliance',
+            icon: ShieldCheck,
+            requiredPermission: {
+              resource: ADMIN_PERMISSION_RESOURCES.COMPLIANCE,
+              action: ADMIN_PERMISSION_ACTIONS.READ,
+            },
           },
           {
             title: t('System Info'),

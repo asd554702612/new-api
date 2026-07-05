@@ -14,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/promptgate"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -105,8 +106,11 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		logger.LogError(c, "invalid response or response body")
 		return nil, types.NewOpenAIError(fmt.Errorf("invalid response"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
-
 	defer service.CloseResponseBodyGracefully(resp)
+
+	if usage, apiErr, handled := OaiStreamHandlerWithPromptGate(c, info, resp, promptgate.NewClientFromEnv()); handled {
+		return usage, apiErr
+	}
 
 	model := info.UpstreamModelName
 	var responseId string
@@ -218,6 +222,22 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	}
+
+	if newApiErr := checkPromptGateOutput(c.Request.Context(), promptgate.NewClientFromEnv(), promptgate.CheckRequest{
+		Content:        openAIResponseOutputText(simpleResponse),
+		Direction:      "output",
+		ContentType:    "text",
+		ConversationID: info.RequestId,
+		SubjectUserID:  fmt.Sprintf("%d", info.UserId),
+		Metadata: map[string]string{
+			"source": "new-api",
+			"route":  info.RequestURLPath,
+			"model":  info.OriginModelName,
+			"stream": "false",
+		},
+	}); newApiErr != nil {
+		return nil, newApiErr
 	}
 
 	for _, choice := range simpleResponse.Choices {

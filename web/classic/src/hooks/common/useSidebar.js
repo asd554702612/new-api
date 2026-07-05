@@ -62,6 +62,7 @@ export const DEFAULT_ADMIN_CONFIG = {
     luckyWheel: true,
     rechargeActivity: true,
     adminLog: true,
+    compliance: true,
     setting: true,
   },
 };

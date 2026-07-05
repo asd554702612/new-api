@@ -40,45 +40,9 @@ export default function SettingsSidebarModulesAdmin(props) {
   const [statusState, statusDispatch] = useContext(StatusContext);
 
   // 左侧边栏模块管理状态（管理员全局控制）
-  const [sidebarModulesAdmin, setSidebarModulesAdmin] = useState({
-    chat: {
-      enabled: true,
-      playground: true,
-      chat: true,
-    },
-    console: {
-      enabled: true,
-      detail: true,
-      token: true,
-      log: true,
-      rankings: true,
-      midjourney: true,
-      task: true,
-    },
-    personal: {
-      enabled: true,
-      topup: true,
-      myOrders: true,
-      luckyWheelUser: true,
-      rechargeActivityUser: true,
-      personal: true,
-    },
-    admin: {
-      enabled: true,
-      channel: true,
-      models: true,
-      deployment: true,
-      redemption: true,
-      user: true,
-      affiliates: true,
-      subscription: true,
-      ordersDashboard: true,
-      orders: true,
-      luckyWheel: true,
-      rechargeActivity: true,
-      setting: true,
-    },
-  });
+  const [sidebarModulesAdmin, setSidebarModulesAdmin] = useState(() =>
+    mergeAdminConfig(null),
+  );
 
   // 处理区域级别开关变更
   function handleSectionChange(sectionKey) {
@@ -110,46 +74,7 @@ export default function SettingsSidebarModulesAdmin(props) {
 
   // 重置为默认配置
   function resetSidebarModules() {
-    const defaultModules = {
-      chat: {
-        enabled: true,
-        playground: true,
-        chat: true,
-      },
-      console: {
-        enabled: true,
-        detail: true,
-        token: true,
-        log: true,
-        rankings: true,
-        midjourney: true,
-        task: true,
-      },
-      personal: {
-        enabled: true,
-        topup: true,
-        myOrders: true,
-        luckyWheelUser: true,
-        rechargeActivityUser: true,
-        personal: true,
-      },
-      admin: {
-        enabled: true,
-        channel: true,
-        models: true,
-        deployment: true,
-        redemption: true,
-        user: true,
-        affiliates: true,
-        subscription: true,
-        ordersDashboard: true,
-        orders: true,
-        luckyWheel: true,
-        rechargeActivity: true,
-        setting: true,
-      },
-    };
-    setSidebarModulesAdmin(defaultModules);
+    setSidebarModulesAdmin(mergeAdminConfig(null));
     showSuccess(t('已重置为默认配置'));
   }
 
@@ -195,43 +120,7 @@ export default function SettingsSidebarModulesAdmin(props) {
         const modules = JSON.parse(props.options.SidebarModulesAdmin);
         setSidebarModulesAdmin(mergeAdminConfig(modules));
       } catch (error) {
-        // 使用默认配置
-        const defaultModules = {
-          chat: { enabled: true, playground: true, chat: true },
-          console: {
-            enabled: true,
-            detail: true,
-            token: true,
-            log: true,
-            rankings: true,
-            midjourney: true,
-            task: true,
-          },
-          personal: {
-            enabled: true,
-            topup: true,
-            myOrders: true,
-            luckyWheelUser: true,
-            rechargeActivityUser: true,
-            personal: true,
-          },
-          admin: {
-            enabled: true,
-            channel: true,
-            models: true,
-            deployment: true,
-            redemption: true,
-            user: true,
-            affiliates: true,
-            subscription: true,
-            ordersDashboard: true,
-            orders: true,
-            luckyWheel: true,
-            rechargeActivity: true,
-            setting: true,
-          },
-        };
-        setSidebarModulesAdmin(defaultModules);
+        setSidebarModulesAdmin(mergeAdminConfig(null));
       }
     }
   }, [props.options]);
@@ -328,6 +217,11 @@ export default function SettingsSidebarModulesAdmin(props) {
           description: t('查询全体用户 API 使用记录'),
         },
         { key: 'user', title: t('用户管理'), description: t('用户账户管理') },
+        {
+          key: 'compliance',
+          title: t('合规处理'),
+          description: t('处理个人信息申请和公众投诉反馈'),
+        },
         {
           key: 'affiliates',
           title: t('邀请返利'),

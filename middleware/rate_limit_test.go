@@ -32,6 +32,10 @@ func performRateLimitRequest(router http.Handler, path string) *httptest.Respons
 	return recorder
 }
 
+func resetInMemoryRateLimiterForTest() {
+	inMemoryRateLimiter.Clear()
+}
+
 func TestGlobalRateLimiterFallsBackToMemoryWhenRedisFails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalRedisEnabled := common.RedisEnabled
@@ -39,11 +43,11 @@ func TestGlobalRateLimiterFallsBackToMemoryWhenRedisFails(t *testing.T) {
 	defer func() {
 		common.RedisEnabled = originalRedisEnabled
 		common.RDB = originalRDB
-		inMemoryRateLimiter = common.InMemoryRateLimiter{}
+		resetInMemoryRateLimiterForTest()
 	}()
 	common.RedisEnabled = true
 	common.RDB = failingRedisClientForRateLimitTest()
-	inMemoryRateLimiter = common.InMemoryRateLimiter{}
+	resetInMemoryRateLimiterForTest()
 
 	router := gin.New()
 	router.Use(rateLimitFactory(10, 60, "TEST"))
@@ -72,7 +76,7 @@ func TestModelRateLimiterFallsBackToMemoryWhenRedisFails(t *testing.T) {
 		setting.ModelRequestRateLimitDurationMinutes = originalDuration
 		setting.ModelRequestRateLimitCount = originalCount
 		setting.ModelRequestRateLimitSuccessCount = originalSuccessCount
-		inMemoryRateLimiter = common.InMemoryRateLimiter{}
+		resetInMemoryRateLimiterForTest()
 	}()
 	common.RedisEnabled = true
 	common.RDB = failingRedisClientForRateLimitTest()
@@ -80,7 +84,7 @@ func TestModelRateLimiterFallsBackToMemoryWhenRedisFails(t *testing.T) {
 	setting.ModelRequestRateLimitDurationMinutes = 1
 	setting.ModelRequestRateLimitCount = 10
 	setting.ModelRequestRateLimitSuccessCount = 10
-	inMemoryRateLimiter = common.InMemoryRateLimiter{}
+	resetInMemoryRateLimiterForTest()
 
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
