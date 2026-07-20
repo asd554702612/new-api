@@ -63,6 +63,7 @@ func GetStatus(c *gin.Context) {
 		system_setting.GetModelSquareSettings().Environment,
 	)
 	oidcClient, oidcOK := system_setting.GetOIDCSettings().ResolveClientForRequest(c.Request)
+	oauthRegisterEnabled := common.RegisterEnabled || oidcOK
 
 	data := gin.H{
 		"version":                     common.Version,
@@ -107,8 +108,11 @@ func GetStatus(c *gin.Context) {
 		"demo_site_enabled":             operation_setting.DemoSiteEnabled,
 		"self_use_mode_enabled":         operation_setting.SelfUseModeEnabled,
 		"register_enabled":              common.RegisterEnabled,
+		"oauth_register_enabled":        oauthRegisterEnabled,
 		"password_login_enabled":        common.PasswordLoginEnabled,
 		"password_register_enabled":     common.PasswordRegisterEnabled,
+		"casdoor_identity_enabled":      setting.CasdoorIdentityEnabled,
+		"casdoor_identity_api_required": setting.CasdoorIdentityApiRequired,
 		"default_use_auto_group":        setting.DefaultUseAutoGroup,
 
 		"usd_exchange_rate": operation_setting.USDExchangeRate,

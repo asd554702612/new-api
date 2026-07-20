@@ -26,6 +26,7 @@ import {
   showInfo,
   showSuccess,
   setStatusData,
+  onOIDCClicked,
   prepareCredentialCreationOptions,
   buildRegistrationResult,
   isPasskeySupported,
@@ -41,6 +42,7 @@ import AccountManagement from './personal/cards/AccountManagement';
 import NotificationSettings from './personal/cards/NotificationSettings';
 import PersonalInfoCard from './personal/cards/PersonalInfoCard';
 import PersonalInfoRightsCard from './personal/cards/PersonalInfoRightsCard';
+import PublicFeedbackStatusCard from './personal/cards/PublicFeedbackStatusCard';
 import PreferencesSettings from './personal/cards/PreferencesSettings';
 import CheckinCalendar from './personal/cards/CheckinCalendar';
 import EmailBindModal from './personal/modals/EmailBindModal';
@@ -85,6 +87,9 @@ const PersonalSetting = () => {
   const [passkeyStatus, setPasskeyStatus] = useState({ enabled: false });
   const [passkeyRegisterLoading, setPasskeyRegisterLoading] = useState(false);
   const [passkeyDeleteLoading, setPasskeyDeleteLoading] = useState(false);
+  const [identitySyncLoading, setIdentitySyncLoading] = useState(false);
+  const [identityVerificationLoading, setIdentityVerificationLoading] =
+    useState(false);
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [
     passkeyRequiredVerificationMethod,
@@ -379,6 +384,89 @@ const PersonalSetting = () => {
     }
   };
 
+  const updateIdentitySnapshot = (data) => {
+    const keys = [
+      'identity_verified',
+      'identity_age_checked',
+      'identity_over16',
+      'identity_synced_at',
+    ];
+    const hasOwn = (key) => Object.prototype.hasOwnProperty.call(data, key);
+    if (!data || !keys.some(hasOwn)) {
+      return;
+    }
+    const nextUser = {
+      ...(userState.user || {}),
+    };
+    keys.forEach((key) => {
+      if (hasOwn(key)) {
+        nextUser[key] = data[key];
+      }
+    });
+    userDispatch({ type: 'login', payload: nextUser });
+    setUserData(nextUser);
+  };
+
+  const bindLoginCenter = () => {
+    if (!status?.oidc_enabled) {
+      showError(t('登录中心未启用'));
+      return;
+    }
+    onOIDCClicked(status.oidc_authorization_endpoint, status.oidc_client_id);
+  };
+
+  const syncIdentityStatus = async () => {
+    setIdentitySyncLoading(true);
+    try {
+      const res = await API.post('/api/user/identity/sync', null, {
+        skipErrorHandler: true,
+      });
+      const { success, message, data } = res.data;
+      if (success) {
+        updateIdentitySnapshot(data);
+        showSuccess(t('实名状态已刷新'));
+      } else {
+        showError(message || t('实名状态刷新失败'));
+      }
+    } catch (error) {
+      showError(
+        error.response?.data?.message || error.message || t('实名状态刷新失败'),
+      );
+    } finally {
+      setIdentitySyncLoading(false);
+    }
+  };
+
+  const startIdentityVerification = async () => {
+    setIdentityVerificationLoading(true);
+    try {
+      const res = await API.post('/api/user/identity/verification', null, {
+        skipErrorHandler: true,
+      });
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message || t('发起实名认证失败'));
+        return;
+      }
+      updateIdentitySnapshot(data);
+      if (data?.action === 'verified') {
+        showSuccess(t('已完成实名认证'));
+        return;
+      }
+      if (data?.action === 'identity_required' && data?.redirect_url) {
+        window.location.assign(data.redirect_url);
+        return;
+      }
+      showError(t('发起实名认证失败'));
+    } catch (error) {
+      showError(
+        error.response?.data?.message || error.message || t('发起实名认证失败'),
+      );
+    } finally {
+      setIdentityVerificationLoading(false);
+    }
+  };
+
   const handleSystemTokenClick = async (e) => {
     e.target.select();
     await copy(e.target.value);
@@ -633,14 +721,24 @@ const PersonalSetting = () => {
             <PersonalInfoCard
               t={t}
               user={userState.user}
+              status={status}
               phoneVerificationEnabled={status?.phone_verification_enabled}
+              identitySyncLoading={identitySyncLoading}
+              identityVerificationLoading={identityVerificationLoading}
               onChangePhone={() => setShowPhoneBindModal(true)}
               onChangePassword={() => setShowChangePasswordModal(true)}
+              onBindOIDC={bindLoginCenter}
+              onSyncIdentityStatus={syncIdentityStatus}
+              onStartIdentityVerification={startIdentityVerification}
             />
           </div>
 
           <div className='mt-4 md:mt-6'>
             <PersonalInfoRightsCard t={t} />
+          </div>
+
+          <div className='mt-4 md:mt-6'>
+            <PublicFeedbackStatusCard t={t} />
           </div>
 
           {/* 签到日历 - 仅在启用时显示 */}

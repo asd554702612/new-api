@@ -30,6 +30,7 @@ export const getHomeLandingData = ({ t, docsLink, systemName }) => {
       { href: '#top', label: t('首页') },
       { href: '#pricing', label: t('定价') },
       { href: docUrl, label: t('API 文档'), external: true },
+      { href: '/feedback', label: t('投诉反馈') },
       { href: '#footer', label: t('技术社群') },
     ],
     hero: {
@@ -223,6 +224,7 @@ export const getHomeLandingData = ({ t, docsLink, systemName }) => {
           items: [
             { label: t('关于我们'), href: '#overview' },
             { label: t('联系我们'), href: '#footer' },
+            { label: t('投诉反馈'), href: '/feedback' },
             { label: t('服务条款'), href: docUrl, external: true },
             { label: t('隐私政策'), href: docUrl, external: true },
           ],

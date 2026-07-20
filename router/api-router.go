@@ -12,6 +12,9 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
+	router.GET("/identity/callback", middleware.CriticalRateLimit(), controller.HandleCasdoorIdentityCallback)
+	router.GET("/identity-required", controller.IdentityRequired)
+
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -135,6 +138,8 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/model_selections", controller.GetUserModelSelections)
 				selfRoute.PUT("/model_selections", controller.UpdateUserModelSelections)
 				selfRoute.POST("/self/phone/verification", middleware.CriticalRateLimit(), controller.SendSelfPhoneVerification)
+				selfRoute.POST("/identity/sync", middleware.CriticalRateLimit(), controller.HandleUserIdentitySync)
+				selfRoute.POST("/identity/verification", middleware.CriticalRateLimit(), controller.HandleUserIdentityVerification)
 				selfRoute.PUT("/self", controller.UpdateSelf)
 				selfRoute.DELETE("/self", controller.DeleteSelf)
 				selfRoute.GET("/token", controller.GenerateAccessToken)

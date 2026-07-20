@@ -55,6 +55,7 @@ export default function SettingsHeaderNavModules(props) {
       requireAuth: true,
     },
     docs: true,
+    feedback: true,
     about: true,
   });
 
@@ -108,6 +109,7 @@ export default function SettingsHeaderNavModules(props) {
         requireAuth: true,
       },
       docs: true,
+      feedback: true,
       about: true,
     };
     setHeaderNavModules(defaultModules);
@@ -179,6 +181,7 @@ export default function SettingsHeaderNavModules(props) {
             requireAuth: true,
           },
           docs: true,
+          feedback: true,
           about: true,
         };
         setHeaderNavModules(defaultModules);
@@ -214,6 +217,11 @@ export default function SettingsHeaderNavModules(props) {
       key: 'docs',
       title: t('文档'),
       description: t('系统文档和帮助信息'),
+    },
+    {
+      key: 'feedback',
+      title: t('投诉反馈'),
+      description: t('公众投诉反馈'),
     },
     {
       key: 'about',

@@ -1,0 +1,14 @@
+{
+  "happyhorse-1.0-t2v": {
+    "status": "FAILURE",
+    "reason": "duration must be between 3 and 15 seconds, got 1"
+  },
+  "happyhorse-1.0-i2v": {
+    "status": "FAILURE",
+    "reason": "duration must be between 3 and 15 seconds, got 1"
+  },
+  "happyhorse-1.0-r2v": {
+    "status": "FAILURE",
+    "reason": "duration must be between 3 and 15 seconds, got 1"
+  }
+}

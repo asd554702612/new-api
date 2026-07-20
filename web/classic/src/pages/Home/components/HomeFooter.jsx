@@ -18,8 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 const HomeFooter = (props) => {
+  const { t } = useTranslation();
   const supportContactLines = String(props.supportContactInfo || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -108,6 +110,18 @@ const HomeFooter = (props) => {
           >
             {props.docsLabel}
           </a>
+
+          <div className='flex flex-col items-center gap-1 leading-6'>
+            <p>{t('© 2018 成都格品科技有限公司版权所有')}</p>
+            <a
+              href='https://beian.miit.gov.cn/'
+              target='_blank'
+              rel='noopener noreferrer'
+              className='transition-colors hover:text-white'
+            >
+              {t('蜀ICP备17044249号-1')}
+            </a>
+          </div>
         </div>
       </div>
     </footer>

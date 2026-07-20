@@ -117,6 +117,73 @@ func TestPublicFeedbackListAndReadByID(t *testing.T) {
 	assert.Equal(t, first.Id, items[0].Id)
 }
 
+func TestGetPublicFeedbackByTrackingCode(t *testing.T) {
+	setupPublicFeedbackModelTest(t)
+
+	feedback, err := CreatePublicFeedback(PublicFeedbackInput{
+		UserId:       701,
+		Username:     "alice",
+		FeedbackType: PublicFeedbackTypeComplaint,
+		Title:        "Trackable complaint",
+		Content:      "Please provide a status update.",
+		IpHash:       "hash-track",
+	})
+	require.NoError(t, err)
+
+	found, err := GetPublicFeedbackByTrackingCode(feedback.TrackingCode)
+
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, feedback.Id, found.Id)
+	assert.Equal(t, feedback.TrackingCode, found.TrackingCode)
+}
+
+func TestGetPublicFeedbackByTrackingCodeRejectsEmptyCode(t *testing.T) {
+	setupPublicFeedbackModelTest(t)
+
+	found, err := GetPublicFeedbackByTrackingCode("   ")
+
+	require.Error(t, err)
+	assert.Nil(t, found)
+	assert.Contains(t, err.Error(), "tracking code")
+}
+
+func TestGetUserPublicFeedbackByIDIsScopedToOwner(t *testing.T) {
+	setupPublicFeedbackModelTest(t)
+
+	ownFeedback, err := CreatePublicFeedback(PublicFeedbackInput{
+		UserId:       801,
+		Username:     "alice",
+		FeedbackType: PublicFeedbackTypeFeedback,
+		Title:        "Own feedback",
+		Content:      "This should be visible to the owner.",
+		IpHash:       "hash-owner",
+	})
+	require.NoError(t, err)
+	otherFeedback, err := CreatePublicFeedback(PublicFeedbackInput{
+		UserId:       802,
+		Username:     "bob",
+		FeedbackType: PublicFeedbackTypeComplaint,
+		Title:        "Other feedback",
+		Content:      "This should not be visible to Alice.",
+		IpHash:       "hash-other",
+	})
+	require.NoError(t, err)
+
+	found, err := GetUserPublicFeedbackByID(801, ownFeedback.Id)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, ownFeedback.Id, found.Id)
+
+	notFound, err := GetUserPublicFeedbackByID(801, otherFeedback.Id)
+	require.NoError(t, err)
+	assert.Nil(t, notFound)
+
+	invalidUser, err := GetUserPublicFeedbackByID(0, ownFeedback.Id)
+	require.Error(t, err)
+	assert.Nil(t, invalidUser)
+}
+
 func TestAdminUpdatePublicFeedbackRejectsInvalidStatus(t *testing.T) {
 	setupPublicFeedbackModelTest(t)
 

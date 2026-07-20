@@ -36,16 +36,27 @@ assert.deepEqual(
     },
     docs: true,
     about: true,
-  }).rankings,
+  }),
   {
-    enabled: true,
-    requireAuth: true,
+    home: true,
+    console: true,
+    pricing: {
+      enabled: true,
+      requireAuth: false,
+    },
+    docs: true,
+    about: true,
+    feedback: true,
+    rankings: {
+      enabled: true,
+      requireAuth: true,
+    },
   },
 );
 
 assert.equal(formatCompactNumber(0), '0');
 assert.equal(formatCompactNumber(999), '999');
 assert.equal(formatCompactNumber(1530), '1.5K');
-assert.equal(formatCompactNumber(2_500_000), '2.5M');
+assert.equal(formatCompactNumber(2500000), '2.5M');
 
 console.log('rankings utils tests passed');

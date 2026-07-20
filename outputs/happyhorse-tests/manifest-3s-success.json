@@ -1,0 +1,20 @@
+{
+  "happyhorse-1.0-t2v": {
+    "task_id": "task_yXCdBMPyezTkxkYimnqRbVJEYsJMZkyG",
+    "path": "/Users/mac/work/gepin/new-api/outputs/happyhorse-tests/happyhorse-1.0-t2v_task_yXCdBMPyezTkxkYimnqRbVJEYsJMZkyG.mp4",
+    "bytes": 1473800,
+    "duration_requested_seconds": 3
+  },
+  "happyhorse-1.0-i2v": {
+    "task_id": "task_vEXVuzXzUMjTwcx7VHxIBENX5TSgOB31",
+    "path": "/Users/mac/work/gepin/new-api/outputs/happyhorse-tests/happyhorse-1.0-i2v_task_vEXVuzXzUMjTwcx7VHxIBENX5TSgOB31.mp4",
+    "bytes": 3427733,
+    "duration_requested_seconds": 3
+  },
+  "happyhorse-1.0-r2v": {
+    "task_id": "task_OcqwcwDOX5bTP4umkQoU8dJ0cQu4VPke",
+    "path": "/Users/mac/work/gepin/new-api/outputs/happyhorse-tests/happyhorse-1.0-r2v_task_OcqwcwDOX5bTP4umkQoU8dJ0cQu4VPke.mp4",
+    "bytes": 2105586,
+    "duration_requested_seconds": 3
+  }
+}

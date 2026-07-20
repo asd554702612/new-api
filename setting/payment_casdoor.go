@@ -10,16 +10,19 @@ const (
 )
 
 var (
-	CasdoorPaymentEnabled   bool
-	CasdoorBaseURL          string = DefaultCasdoorBaseURL
-	CasdoorClientID         string
-	CasdoorClientSecret     string
-	CasdoorApplicationName  string
-	CasdoorPaymentProduct   string = DefaultCasdoorPaymentProduct
-	CasdoorPaymentProvider  string = DefaultCasdoorPaymentProvider
-	CasdoorPaymentCurrency  string = DefaultCasdoorPaymentCurrency
-	CasdoorPaymentUnitPrice float64
-	CasdoorPaymentMinTopUp  int = 1
+	CasdoorPaymentEnabled      bool
+	CasdoorIdentityEnabled     bool
+	CasdoorIdentityApiRequired bool
+	CasdoorBaseURL             string = DefaultCasdoorBaseURL
+	CasdoorClientID            string
+	CasdoorClientSecret        string
+	CasdoorApplicationName     string
+	CasdoorIdentityCallbackURL string
+	CasdoorPaymentProduct      string = DefaultCasdoorPaymentProduct
+	CasdoorPaymentProvider     string = DefaultCasdoorPaymentProvider
+	CasdoorPaymentCurrency     string = DefaultCasdoorPaymentCurrency
+	CasdoorPaymentUnitPrice    float64
+	CasdoorPaymentMinTopUp     int = 1
 )
 
 func GetCasdoorBaseURL() string {
@@ -27,6 +30,13 @@ func GetCasdoorBaseURL() string {
 		return DefaultCasdoorBaseURL
 	}
 	return strings.TrimRight(strings.TrimSpace(CasdoorBaseURL), "/")
+}
+
+func GetCasdoorIdentityCallbackURL(defaultBaseURL string) string {
+	if strings.TrimSpace(CasdoorIdentityCallbackURL) != "" {
+		return strings.TrimSpace(CasdoorIdentityCallbackURL)
+	}
+	return strings.TrimRight(strings.TrimSpace(defaultBaseURL), "/") + "/identity/callback"
 }
 
 func GetCasdoorPaymentProduct() string {

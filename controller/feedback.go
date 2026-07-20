@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -23,6 +24,32 @@ type publicFeedbackCreateRequest struct {
 type publicFeedbackAdminUpdateRequest struct {
 	Status    string `json:"status"`
 	AdminNote string `json:"admin_note"`
+}
+
+type publicFeedbackTrackResponse struct {
+	TrackingCode string `json:"tracking_code"`
+	FeedbackType string `json:"feedback_type"`
+	Title        string `json:"title"`
+	Content      string `json:"content"`
+	Status       string `json:"status"`
+	AdminNote    string `json:"admin_note"`
+	CreatedAt    int64  `json:"created_at"`
+	UpdatedAt    int64  `json:"updated_at"`
+	HandledAt    int64  `json:"handled_at"`
+}
+
+func buildPublicFeedbackTrackResponse(record *model.PublicFeedback) publicFeedbackTrackResponse {
+	return publicFeedbackTrackResponse{
+		TrackingCode: record.TrackingCode,
+		FeedbackType: record.FeedbackType,
+		Title:        record.Title,
+		Content:      record.Content,
+		Status:       record.Status,
+		AdminNote:    record.AdminNote,
+		CreatedAt:    record.CreatedAt,
+		UpdatedAt:    record.UpdatedAt,
+		HandledAt:    record.HandledAt,
+	}
 }
 
 func currentOptionalFeedbackUser(c *gin.Context) (int, string) {
@@ -81,6 +108,37 @@ func ListMyFeedback(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(records)
 	common.ApiSuccess(c, pageInfo)
+}
+
+func GetMyFeedbackDetail(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	record, err := model.GetUserPublicFeedbackByID(c.GetInt("id"), id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if record == nil {
+		common.ApiError(c, errors.New("feedback record not found"))
+		return
+	}
+	common.ApiSuccess(c, record)
+}
+
+func TrackPublicFeedback(c *gin.Context) {
+	record, err := model.GetPublicFeedbackByTrackingCode(c.Param("tracking_code"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if record == nil {
+		common.ApiError(c, errors.New("feedback record not found"))
+		return
+	}
+	common.ApiSuccess(c, buildPublicFeedbackTrackResponse(record))
 }
 
 func AdminListFeedback(c *gin.Context) {

@@ -152,10 +152,13 @@ func InitOptionMap() {
 	common.OptionMap["AlipayWapEnabled"] = strconv.FormatBool(setting.AlipayWapEnabled)
 	common.OptionMap["AlipayFaceEnabled"] = strconv.FormatBool(setting.AlipayFaceEnabled)
 	common.OptionMap["CasdoorPaymentEnabled"] = strconv.FormatBool(setting.CasdoorPaymentEnabled)
+	common.OptionMap["CasdoorIdentityEnabled"] = strconv.FormatBool(setting.CasdoorIdentityEnabled)
+	common.OptionMap["CasdoorIdentityApiRequired"] = strconv.FormatBool(setting.CasdoorIdentityApiRequired)
 	common.OptionMap["CasdoorBaseURL"] = setting.GetCasdoorBaseURL()
 	common.OptionMap["CasdoorClientID"] = setting.CasdoorClientID
 	common.OptionMap["CasdoorClientSecret"] = setting.CasdoorClientSecret
 	common.OptionMap["CasdoorApplicationName"] = setting.CasdoorApplicationName
+	common.OptionMap["CasdoorIdentityCallbackURL"] = setting.CasdoorIdentityCallbackURL
 	common.OptionMap["CasdoorPaymentProduct"] = setting.GetCasdoorPaymentProduct()
 	common.OptionMap["CasdoorPaymentProvider"] = setting.GetCasdoorPaymentProvider()
 	common.OptionMap["CasdoorPaymentCurrency"] = setting.GetCasdoorPaymentCurrency()
@@ -348,7 +351,7 @@ func updateOptionMap(key string, value string) (err error) {
 			common.ImageDownloadPermission = intValue
 		}
 	}
-	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" || key == "SMTPInsecureSkipVerify" {
+	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" || key == "SMTPInsecureSkipVerify" || key == "CasdoorIdentityApiRequired" {
 		boolValue := value == "true"
 		switch key {
 		case "PasswordRegisterEnabled":
@@ -371,6 +374,10 @@ func updateOptionMap(key string, value string) (err error) {
 			common.TurnstileCheckEnabled = boolValue
 		case "RegisterEnabled":
 			common.RegisterEnabled = boolValue
+		case "CasdoorIdentityEnabled":
+			setting.CasdoorIdentityEnabled = boolValue
+		case "CasdoorIdentityApiRequired":
+			setting.CasdoorIdentityApiRequired = boolValue
 		case "AffiliateEnabled":
 			common.AffiliateEnabled = boolValue
 		case "AffiliateSignupRewardEnabled":
@@ -621,6 +628,8 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.CasdoorClientSecret = value
 	case "CasdoorApplicationName":
 		setting.CasdoorApplicationName = value
+	case "CasdoorIdentityCallbackURL":
+		setting.CasdoorIdentityCallbackURL = strings.TrimSpace(value)
 	case "CasdoorPaymentProduct":
 		setting.CasdoorPaymentProduct = value
 	case "CasdoorPaymentProvider":

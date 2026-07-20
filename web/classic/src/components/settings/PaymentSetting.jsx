@@ -81,10 +81,13 @@ const PaymentSetting = () => {
     AlipayFaceEnabled: true,
 
     CasdoorPaymentEnabled: false,
+    CasdoorIdentityEnabled: false,
+    CasdoorIdentityApiRequired: false,
     CasdoorBaseURL: 'https://login.gepinkeji.com',
     CasdoorClientID: '',
     CasdoorClientSecret: '',
     CasdoorApplicationName: '',
+    CasdoorIdentityCallbackURL: '',
     CasdoorPaymentProduct: 'external-pay-template',
     CasdoorPaymentProvider: 'provider_payment_wechat_gepinkeji',
     CasdoorPaymentCurrency: 'CNY',
@@ -186,6 +189,7 @@ const PaymentSetting = () => {
             }
             break;
           case 'payment_setting.compliance_confirmed':
+          case 'CasdoorIdentityApiRequired':
             newInputs[item.key] = toBoolean(item.value);
             break;
           case 'payment_setting.compliance_confirmed_at':
@@ -360,7 +364,7 @@ const PaymentSetting = () => {
                   hideSectionTitle
                 />
               </Tabs.TabPane>
-              <Tabs.TabPane tab={t('Casdoor 统一支付')} itemKey='casdoor'>
+              <Tabs.TabPane tab={t('Casdoor 登录中心')} itemKey='casdoor'>
                 <SettingsPaymentGatewayCasdoor
                   options={inputs}
                   refresh={onRefresh}

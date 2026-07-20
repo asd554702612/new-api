@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -300,6 +301,12 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 	}
 }
 
+func tokenAPIRequiresVerifiedIdentity(user *model.UserBase) bool {
+	return setting.CasdoorIdentityEnabled &&
+		setting.CasdoorIdentityApiRequired &&
+		!user.HasVerifiedIdentity()
+}
+
 func TokenAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		// 先检测是否为ws
@@ -401,6 +408,10 @@ func TokenAuth() func(c *gin.Context) {
 		userEnabled := userCache.Status == common.UserStatusEnabled
 		if !userEnabled {
 			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgAuthUserBanned))
+			return
+		}
+		if tokenAPIRequiresVerifiedIdentity(userCache) {
+			abortWithOpenAiMessage(c, http.StatusForbidden, "请先完成实名认证后再调用 API", types.ErrorCodeAccessDenied)
 			return
 		}
 

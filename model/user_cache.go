@@ -15,13 +15,21 @@ import (
 
 // UserBase struct remains the same as it represents the cached data structure
 type UserBase struct {
-	Id       int    `json:"id"`
-	Group    string `json:"group"`
-	Email    string `json:"email"`
-	Quota    int    `json:"quota"`
-	Status   int    `json:"status"`
-	Username string `json:"username"`
-	Setting  string `json:"setting"`
+	Id                     int    `json:"id"`
+	Group                  string `json:"group"`
+	Email                  string `json:"email"`
+	Quota                  int    `json:"quota"`
+	Status                 int    `json:"status"`
+	Username               string `json:"username"`
+	Setting                string `json:"setting"`
+	IdentityVerified       bool   `json:"identity_verified"`
+	IdentityAgeChecked     bool   `json:"identity_age_checked"`
+	IdentityOver16         bool   `json:"identity_over16"`
+	IdentitySnapshotCached bool   `json:"identity_snapshot_cached"`
+}
+
+func (user *UserBase) HasVerifiedIdentity() bool {
+	return user != nil && user.IdentityVerified && user.IdentityAgeChecked && user.IdentityOver16
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -94,6 +102,16 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	// Try getting from Redis first
 	userCache, err = cacheGetUserBase(userId)
 	if err == nil {
+		if userCache.IdentitySnapshotCached {
+			return userCache, nil
+		}
+		common.SysLog(fmt.Sprintf("user %d cache missing identity snapshot, refreshing from database", userId))
+		fromDB = true
+		user, err = GetUserById(userId, false)
+		if err != nil {
+			return nil, err
+		}
+		userCache = user.ToBaseUser()
 		return userCache, nil
 	}
 
@@ -105,15 +123,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	}
 
 	// Create cache object from user data
-	userCache = &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
-	}
+	userCache = user.ToBaseUser()
 
 	return userCache, nil
 }

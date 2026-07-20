@@ -17,20 +17,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useContext } from 'react';
 import {
   Button,
   Card,
   Input,
   Select,
   Space,
+  Tag,
   TextArea,
   Typography,
 } from '@douyinfe/semi-ui';
-import { ClipboardCheck, MessageSquare } from 'lucide-react';
+import { ClipboardCheck, MessageSquare, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Turnstile from 'react-turnstile';
 import { API, copy, showError, showSuccess } from '../../helpers';
+import { UserContext } from '../../context/User';
 
 const INITIAL_FORM = {
   feedback_type: 'complaint',
@@ -41,19 +43,80 @@ const INITIAL_FORM = {
   content: '',
 };
 
+const readLocalUser = () => {
+  try {
+    const raw = localStorage.getItem('user');
+    return raw ? JSON.parse(raw) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const buildUserContactFields = (user) => ({
+  contact_name: user?.display_name || user?.displayName || user?.username || '',
+  contact_email: user?.email || '',
+  contact_phone: user?.phone_number || user?.phone || '',
+});
+
 const unwrapApiData = (res) => {
   const body = res?.data;
   return body?.data ?? body;
 };
 
+const formatDate = (value) => {
+  if (!value) return '-';
+  const normalized =
+    typeof value === 'number' && value < 10000000000 ? value * 1000 : value;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime())
+    ? String(value)
+    : parsed.toLocaleString();
+};
+
+const getStatusLabel = (t, status) => {
+  const labels = {
+    pending: t('待处理'),
+    processing: t('处理中'),
+    resolved: t('已解决'),
+    closed: t('已关闭'),
+    rejected: t('已驳回'),
+  };
+  return labels[status] || status || '-';
+};
+
+const getStatusColor = (status) => {
+  const colors = {
+    pending: 'orange',
+    processing: 'blue',
+    resolved: 'green',
+    closed: 'grey',
+    rejected: 'red',
+  };
+  return colors[status] || 'grey';
+};
+
+const getFeedbackTypeLabel = (t, type) => {
+  const labels = {
+    complaint: t('投诉'),
+    feedback: t('反馈'),
+    other: t('其他'),
+  };
+  return labels[type] || type || '-';
+};
+
 const Feedback = () => {
   const { t } = useTranslation();
+  const [userState] = useContext(UserContext);
   const [form, setForm] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
   const [trackingCode, setTrackingCode] = useState('');
+  const [trackingCodeQuery, setTrackingCodeQuery] = useState('');
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackedFeedback, setTrackedFeedback] = useState(null);
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
+  const currentUser = userState?.user || readLocalUser();
 
   const typeOptions = useMemo(
     () => [
@@ -80,6 +143,20 @@ const Feedback = () => {
         setTurnstileSiteKey('');
       });
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    const contactFields = buildUserContactFields(currentUser);
+    setForm((prev) => ({
+      ...prev,
+      contact_name: prev.contact_name || contactFields.contact_name,
+      contact_email: prev.contact_email || contactFields.contact_email,
+      contact_phone: prev.contact_phone || contactFields.contact_phone,
+    }));
+  }, [currentUser]);
 
   const validateForm = () => {
     if (!form.contact_name.trim()) {
@@ -135,7 +212,11 @@ const Feedback = () => {
         res.data?.tracking_code ||
         '';
       setTrackingCode(code);
-      setForm(INITIAL_FORM);
+      setForm((prev) => ({
+        ...INITIAL_FORM,
+        ...buildUserContactFields(currentUser),
+        feedback_type: prev.feedback_type,
+      }));
       setTurnstileToken('');
       showSuccess(t('提交成功'));
     } catch (error) {
@@ -151,9 +232,37 @@ const Feedback = () => {
     }
   };
 
+  const queryTrackingCode = async () => {
+    const code = trackingCodeQuery.trim();
+    if (!code) {
+      showError(t('请填写追踪码'));
+      return;
+    }
+
+    setTrackingLoading(true);
+    try {
+      const res = await API.get(
+        `/api/feedback/track/${encodeURIComponent(code)}`,
+        { disableDuplicate: true },
+      );
+      const { success, message } = res.data || {};
+      if (success === false) {
+        showError(message || t('未找到投诉反馈记录'));
+        setTrackedFeedback(null);
+        return;
+      }
+      setTrackedFeedback(unwrapApiData(res));
+    } catch (error) {
+      showError(error?.message || t('查询失败，请重试'));
+      setTrackedFeedback(null);
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
   return (
     <div className='mt-[60px] px-2'>
-      <div className='w-full max-w-3xl mx-auto'>
+      <div className='w-full max-w-3xl mx-auto space-y-5'>
         <Card className='!rounded-2xl shadow-sm border-0'>
           <div className='flex items-center gap-3 mb-5'>
             <div className='w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center'>
@@ -163,9 +272,6 @@ const Feedback = () => {
               <Typography.Title heading={4} style={{ margin: 0 }}>
                 {t('公众投诉反馈')}
               </Typography.Title>
-              <Typography.Text type='secondary'>
-                {t('无需登录即可提交投诉、反馈或其他事项')}
-              </Typography.Text>
             </div>
           </div>
 
@@ -263,6 +369,99 @@ const Feedback = () => {
                 {t('提交')}
               </Button>
             </div>
+          </Space>
+        </Card>
+
+        <Card className='!rounded-2xl shadow-sm border-0'>
+          <div className='flex items-center gap-3 mb-5'>
+            <div className='w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center'>
+              <Search size={20} />
+            </div>
+            <Typography.Title heading={4} style={{ margin: 0 }}>
+              {t('查询投诉反馈')}
+            </Typography.Title>
+          </div>
+
+          <Space vertical align='start' className='w-full'>
+            <div className='flex flex-col sm:flex-row gap-3 w-full'>
+              <Input
+                value={trackingCodeQuery}
+                onChange={setTrackingCodeQuery}
+                placeholder={t('请输入追踪码')}
+              />
+              <Button
+                type='primary'
+                theme='outline'
+                icon={<Search size={16} />}
+                loading={trackingLoading}
+                onClick={queryTrackingCode}
+              >
+                {t('查询')}
+              </Button>
+            </div>
+
+            {trackedFeedback && (
+              <div className='w-full rounded-xl border border-gray-100 p-4'>
+                <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+                  <div>
+                    <div className='text-xs text-gray-500 mb-1'>
+                      {t('追踪码')}
+                    </div>
+                    <div className='text-sm font-medium break-all'>
+                      {trackedFeedback.tracking_code || '-'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className='text-xs text-gray-500 mb-1'>
+                      {t('状态')}
+                    </div>
+                    <Tag color={getStatusColor(trackedFeedback.status)}>
+                      {getStatusLabel(t, trackedFeedback.status)}
+                    </Tag>
+                  </div>
+                  <div>
+                    <div className='text-xs text-gray-500 mb-1'>
+                      {t('类型')}
+                    </div>
+                    <div className='text-sm'>
+                      {getFeedbackTypeLabel(t, trackedFeedback.feedback_type)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className='text-xs text-gray-500 mb-1'>
+                      {t('处理时间')}
+                    </div>
+                    <div className='text-sm'>
+                      {formatDate(trackedFeedback.handled_at)}
+                    </div>
+                  </div>
+                  <div className='md:col-span-2'>
+                    <div className='text-xs text-gray-500 mb-1'>
+                      {t('标题')}
+                    </div>
+                    <div className='text-sm font-medium break-all'>
+                      {trackedFeedback.title || '-'}
+                    </div>
+                  </div>
+                  <div className='md:col-span-2'>
+                    <div className='text-xs text-gray-500 mb-1'>
+                      {t('内容')}
+                    </div>
+                    <div className='text-sm whitespace-pre-wrap break-all'>
+                      {trackedFeedback.content || '-'}
+                    </div>
+                  </div>
+                  <div className='md:col-span-2'>
+                    <div className='text-xs text-gray-500 mb-1'>
+                      {t('处理说明')}
+                    </div>
+                    <div className='text-sm whitespace-pre-wrap break-all'>
+                      {trackedFeedback.admin_note || '-'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </Space>
         </Card>
       </div>

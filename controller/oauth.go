@@ -4,14 +4,27 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+)
+
+const (
+	casdoorIdentitySessionState      = "casdoor_identity_state"
+	casdoorIdentitySessionUserID     = "casdoor_identity_user_id"
+	casdoorIdentitySessionOIDCID     = "casdoor_identity_oidc_id"
+	casdoorIdentitySessionReturnPath = "casdoor_identity_return_path"
+	casdoorIdentityReturnToken       = "/console/token"
+	casdoorIdentityReturnPersonal    = "/console/personal"
 )
 
 // providerParams returns map with Provider key for i18n templates
@@ -103,8 +116,18 @@ func HandleOAuth(c *gin.Context) {
 		return
 	}
 
+	var identity *service.CasdoorIdentity
+	allowCreateWhenRegisterDisabled := shouldAllowCreateWhenRegisterDisabled(providerName)
+	if shouldUseCasdoorIdentity(providerName) {
+		identity, err = syncCasdoorIdentity(c, oauthUser.ProviderUserID)
+		if err != nil {
+			common.ApiErrorMsg(c, "实名状态同步失败，请稍后重试")
+			return
+		}
+	}
+
 	// 7. Find or create user
-	user, err := findOrCreateOAuthUser(c, provider, oauthUser, session)
+	user, err := findOrCreateOAuthUser(c, provider, oauthUser, session, allowCreateWhenRegisterDisabled)
 	if err != nil {
 		switch err.(type) {
 		case *OAuthUserDeletedError:
@@ -115,6 +138,29 @@ func HandleOAuth(c *gin.Context) {
 			common.ApiError(c, err)
 		}
 		return
+	}
+
+	if identity != nil {
+		if err := user.UpdateIdentitySnapshot(identity.IsVerified, identity.AgeChecked, identity.IsOver16, common.GetTimestamp()); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if !service.CanEnterCasdoorIdentityBusiness(identity) {
+			redirectURL, err := prepareCasdoorIdentityRedirect(c, user, identity.UserID, casdoorIdentityReturnToken)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"message": "",
+				"data": gin.H{
+					"action":       "identity_required",
+					"redirect_url": redirectURL,
+				},
+			})
+			return
+		}
 	}
 
 	// 8. Check user status
@@ -196,7 +242,7 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 }
 
 // findOrCreateOAuthUser finds existing user or creates new user
-func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, session sessions.Session) (*model.User, error) {
+func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, session sessions.Session, allowCreateWhenRegisterDisabled bool) (*model.User, error) {
 	user := &model.User{}
 
 	// Check if user already exists with new ID
@@ -233,7 +279,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 
 	// User doesn't exist, create new user if registration is enabled
-	if !common.RegisterEnabled {
+	if !common.RegisterEnabled && !allowCreateWhenRegisterDisabled {
 		return nil, &OAuthRegistrationDisabledError{}
 	}
 
@@ -263,7 +309,10 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	user.Status = common.UserStatusEnabled
 
 	// Handle affiliate code
-	affCode := session.Get("aff")
+	var affCode any
+	if session != nil {
+		affCode = session.Get("aff")
+	}
 	inviterId := 0
 	if affCode != nil {
 		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
@@ -328,6 +377,202 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 
 	return user, nil
+}
+
+func shouldUseCasdoorIdentity(providerName string) bool {
+	return providerName == "oidc" && setting.CasdoorIdentityEnabled
+}
+
+func shouldAllowCreateWhenRegisterDisabled(providerName string) bool {
+	return providerName == "oidc"
+}
+
+func syncCasdoorIdentity(c *gin.Context, casdoorUserID string) (*service.CasdoorIdentity, error) {
+	client := newCasdoorIdentityClientForRequest(c)
+	return client.SyncUser(c.Request.Context(), casdoorUserID)
+}
+
+func newCasdoorIdentityClientForRequest(c *gin.Context) *service.CasdoorIdentityClient {
+	clientID := strings.TrimSpace(setting.CasdoorClientID)
+	clientSecret := strings.TrimSpace(setting.CasdoorClientSecret)
+	if clientID == "" || clientSecret == "" {
+		if resolved, ok := system_setting.GetOIDCSettings().ResolveClientForRequest(c.Request); ok {
+			clientID = resolved.ClientId
+			clientSecret = resolved.ClientSecret
+		}
+	}
+	return service.NewCasdoorIdentityClient(setting.GetCasdoorBaseURL(), clientID, clientSecret)
+}
+
+func normalizeCasdoorIdentityReturnPath(returnPath string) string {
+	switch returnPath {
+	case casdoorIdentityReturnPersonal:
+		return casdoorIdentityReturnPersonal
+	default:
+		return casdoorIdentityReturnToken
+	}
+}
+
+func casdoorIdentitySnapshotData(user *model.User) gin.H {
+	return gin.H{
+		"identity_verified":    user.IdentityVerified,
+		"identity_age_checked": user.IdentityAgeChecked,
+		"identity_over16":      user.IdentityOver16,
+		"identity_synced_at":   user.IdentitySyncedAt,
+	}
+}
+
+func casdoorIdentityActionData(action string, user *model.User) gin.H {
+	data := casdoorIdentitySnapshotData(user)
+	data["action"] = action
+	return data
+}
+
+func prepareCasdoorIdentityRedirect(c *gin.Context, user *model.User, casdoorUserID string, returnPath string) (string, error) {
+	state := common.GetRandomString(32)
+	session := sessions.Default(c)
+	session.Set(casdoorIdentitySessionState, state)
+	session.Set(casdoorIdentitySessionUserID, user.Id)
+	session.Set(casdoorIdentitySessionOIDCID, casdoorUserID)
+	session.Set(casdoorIdentitySessionReturnPath, normalizeCasdoorIdentityReturnPath(returnPath))
+	if err := session.Save(); err != nil {
+		return "", err
+	}
+	origin := system_setting.OIDCRequestOrigin(c.Request)
+	redirectURI := setting.GetCasdoorIdentityCallbackURL(origin)
+	client := newCasdoorIdentityClientForRequest(c)
+	return client.BuildVerificationURL(casdoorUserID, redirectURI, state)
+}
+
+func getCurrentCasdoorIdentityUser(c *gin.Context) (*model.User, bool) {
+	if !setting.CasdoorIdentityEnabled {
+		common.ApiErrorMsg(c, "实名认证未启用")
+		return nil, false
+	}
+	user, err := model.GetUserById(c.GetInt("id"), true)
+	if err != nil {
+		common.ApiError(c, err)
+		return nil, false
+	}
+	if user.OidcId == "" {
+		common.ApiErrorMsg(c, "请先绑定登录中心账号")
+		return nil, false
+	}
+	return user, true
+}
+
+func syncCurrentCasdoorIdentity(c *gin.Context, user *model.User) (*service.CasdoorIdentity, bool) {
+	identity, err := syncCasdoorIdentity(c, user.OidcId)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("Casdoor identity sync failed for user %d: %v", user.Id, err))
+		common.ApiErrorMsg(c, "实名状态同步失败，请稍后重试")
+		return nil, false
+	}
+	if err := user.UpdateIdentitySnapshot(identity.IsVerified, identity.AgeChecked, identity.IsOver16, common.GetTimestamp()); err != nil {
+		common.ApiError(c, err)
+		return nil, false
+	}
+	return identity, true
+}
+
+func HandleUserIdentitySync(c *gin.Context) {
+	user, ok := getCurrentCasdoorIdentityUser(c)
+	if !ok {
+		return
+	}
+	if _, ok = syncCurrentCasdoorIdentity(c, user); !ok {
+		return
+	}
+	common.ApiSuccess(c, casdoorIdentitySnapshotData(user))
+}
+
+func HandleUserIdentityVerification(c *gin.Context) {
+	user, ok := getCurrentCasdoorIdentityUser(c)
+	if !ok {
+		return
+	}
+	identity, ok := syncCurrentCasdoorIdentity(c, user)
+	if !ok {
+		return
+	}
+	if service.CanEnterCasdoorIdentityBusiness(identity) {
+		common.ApiSuccess(c, casdoorIdentityActionData("verified", user))
+		return
+	}
+
+	redirectURL, err := prepareCasdoorIdentityRedirect(c, user, user.OidcId, casdoorIdentityReturnPersonal)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	data := casdoorIdentityActionData("identity_required", user)
+	data["redirect_url"] = redirectURL
+	common.ApiSuccess(c, data)
+}
+
+func HandleCasdoorIdentityCallback(c *gin.Context) {
+	session := sessions.Default(c)
+	state := c.Query("state")
+	savedState, _ := session.Get(casdoorIdentitySessionState).(string)
+	if state == "" || savedState == "" || state != savedState {
+		c.String(http.StatusBadRequest, "invalid identity state")
+		return
+	}
+	userID, ok := session.Get(casdoorIdentitySessionUserID).(int)
+	if !ok || userID == 0 {
+		c.String(http.StatusBadRequest, "invalid identity session")
+		return
+	}
+	casdoorUserID, _ := session.Get(casdoorIdentitySessionOIDCID).(string)
+	if casdoorUserID == "" {
+		c.String(http.StatusBadRequest, "invalid identity session")
+		return
+	}
+
+	identity, err := syncCasdoorIdentity(c, casdoorUserID)
+	if err != nil {
+		common.ApiErrorMsg(c, "实名状态同步失败，请稍后重试")
+		return
+	}
+	user, err := model.GetUserById(userID, true)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if user.OidcId != casdoorUserID {
+		c.String(http.StatusBadRequest, "invalid identity session")
+		return
+	}
+	if err := user.UpdateIdentitySnapshot(identity.IsVerified, identity.AgeChecked, identity.IsOver16, common.GetTimestamp()); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if user.Status != common.UserStatusEnabled {
+		common.ApiErrorI18n(c, i18n.MsgOAuthUserBanned)
+		return
+	}
+	if !service.CanEnterCasdoorIdentityBusiness(identity) {
+		c.Redirect(http.StatusFound, "/identity-required")
+		return
+	}
+
+	session.Delete(casdoorIdentitySessionState)
+	session.Delete(casdoorIdentitySessionUserID)
+	session.Delete(casdoorIdentitySessionOIDCID)
+	returnPath := normalizeCasdoorIdentityReturnPath("")
+	if savedReturnPath, _ := session.Get(casdoorIdentitySessionReturnPath).(string); savedReturnPath != "" {
+		returnPath = normalizeCasdoorIdentityReturnPath(savedReturnPath)
+	}
+	session.Delete(casdoorIdentitySessionReturnPath)
+	if err := establishLoginSession(user, c); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
+		return
+	}
+	c.Redirect(http.StatusFound, common.ThemeAwarePath(returnPath))
+}
+
+func IdentityRequired(c *gin.Context) {
+	c.String(http.StatusOK, "实名认证未完成或年龄不满足要求，请返回登录中心完成实名认证后重试。")
 }
 
 // Error types for OAuth

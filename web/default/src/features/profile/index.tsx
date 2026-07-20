@@ -23,7 +23,10 @@ import {
   CardStaggerContainer,
   CardStaggerItem,
 } from '@/components/page-transition'
-import { PersonalInfoRightsCard } from '@/features/compliance'
+import {
+  PersonalInfoRightsCard,
+  PublicFeedbackStatusCard,
+} from '@/features/compliance'
 import { CheckinCalendarCard } from './components/checkin-calendar-card'
 import { LanguagePreferencesCard } from './components/language-preferences-card'
 import { PasskeyCard } from './components/passkey-card'
@@ -63,6 +66,7 @@ export function Profile() {
                   onProfileUpdate={refreshProfile}
                 />
                 <PersonalInfoRightsCard />
+                <PublicFeedbackStatusCard />
                 <LanguagePreferencesCard
                   profile={profile}
                   onProfileUpdate={refreshProfile}

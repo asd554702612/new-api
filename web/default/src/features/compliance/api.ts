@@ -25,9 +25,10 @@ import type {
   CreatePrivacyRequestPayload,
   CreatePublicFeedbackPayload,
   PagePayload,
-  PersonalInfoSnapshot,
-  PrivacyRequest,
-  PublicFeedback,
+	PersonalInfoSnapshot,
+	PrivacyRequest,
+	PublicFeedback,
+	PublicFeedbackTrackResult,
 } from './types'
 
 export async function getPersonalInfoSnapshot(): Promise<
@@ -59,17 +60,46 @@ export async function cancelPrivacyRequest(
 }
 
 export async function createPublicFeedback(
-  payload: CreatePublicFeedbackPayload,
-  turnstileToken?: string
+	payload: CreatePublicFeedbackPayload,
+	turnstileToken?: string
 ): Promise<ApiResponse<{ id: number; tracking_code: string }>> {
   const res = await api.post('/api/feedback', payload, {
     params: turnstileToken ? { turnstile: turnstileToken } : undefined,
   })
-  return res.data
+	return res.data
+}
+
+export async function trackPublicFeedback(
+	trackingCode: string
+): Promise<ApiResponse<PublicFeedbackTrackResult>> {
+	const res = await api.get(
+		`/api/feedback/track/${encodeURIComponent(trackingCode)}`,
+		{
+			disableDuplicate: true,
+			skipBusinessError: true,
+		}
+	)
+	return res.data
+}
+
+export async function listMyFeedback(
+	params: ComplianceListParams = {}
+): Promise<ApiResponse<PagePayload<PublicFeedback>>> {
+	const res = await api.get('/api/feedback/my', { params })
+	return res.data
+}
+
+export async function getMyFeedback(
+	id: number
+): Promise<ApiResponse<PublicFeedback>> {
+	const res = await api.get(`/api/feedback/my/${id}`, {
+		disableDuplicate: true,
+	})
+	return res.data
 }
 
 export async function listAdminPrivacyRequests(
-  params: ComplianceListParams = {}
+	params: ComplianceListParams = {}
 ): Promise<ApiResponse<PagePayload<PrivacyRequest>>> {
   const res = await api.get('/api/privacy/admin/requests', {
     params,

@@ -29,6 +29,16 @@ func TestComplianceRoutesUseExpectedPermissions(t *testing.T) {
 	assertComplianceRoutePermission(t, feedbackAdminPermissionRoutes, http.MethodPatch, "/:id", authz.ComplianceWrite, controller.AdminUpdateFeedback)
 }
 
+func TestComplianceFeedbackUserRoutesAreRegistered(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	api := engine.Group("/api")
+	registerComplianceRoutes(api)
+
+	assertRouteRegistered(t, engine, http.MethodGet, "/api/feedback/track/:tracking_code")
+	assertRouteRegistered(t, engine, http.MethodGet, "/api/feedback/my/:id")
+}
+
 func TestComplianceAdminRoutePermissionDeniedReturns403(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := newComplianceRouterAuthzDB(t)
@@ -90,6 +100,16 @@ func assertComplianceRoutePermission(t *testing.T, routes []permissionRoute, met
 		}
 	}
 	t.Fatalf("route %s %s not found", method, path)
+}
+
+func assertRouteRegistered(t *testing.T, engine *gin.Engine, method string, path string) {
+	t.Helper()
+	for _, route := range engine.Routes() {
+		if route.Method == method && route.Path == path {
+			return
+		}
+	}
+	t.Fatalf("route %s %s not registered", method, path)
 }
 
 func newComplianceRouterAuthzDB(t *testing.T) *gorm.DB {

@@ -44,7 +44,9 @@ func registerComplianceRoutes(apiRouter *gin.RouterGroup) {
 	feedbackRoute := apiRouter.Group("/feedback")
 	{
 		feedbackRoute.POST("", anonymousRequestBodyLimit, middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.CreatePublicFeedback)
+		feedbackRoute.GET("/track/:tracking_code", middleware.CriticalRateLimit(), controller.TrackPublicFeedback)
 		feedbackRoute.GET("/my", middleware.UserAuth(), controller.ListMyFeedback)
+		feedbackRoute.GET("/my/:id", middleware.UserAuth(), controller.GetMyFeedbackDetail)
 
 		adminRoute := feedbackRoute.Group("/admin")
 		adminRoute.Use(middleware.AdminAuth())

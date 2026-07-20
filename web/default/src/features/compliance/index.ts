@@ -18,4 +18,5 @@ For commercial licensing, please contact support@quantumnous.com
 */
 export { AdminCompliancePage } from './admin-compliance-page'
 export { PersonalInfoRightsCard } from './components/personal-info-rights-card'
+export { PublicFeedbackStatusCard } from './components/public-feedback-status-card'
 export { PublicFeedbackPage } from './public-feedback-page'

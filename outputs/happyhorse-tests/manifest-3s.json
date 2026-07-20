@@ -1,0 +1,17 @@
+{
+  "happyhorse-1.0-t2v": {
+    "status": "SUBMIT_FAILED",
+    "http_status": 500,
+    "body": "{\"code\":\"fail_to_fetch_task\",\"message\":\"{\\\"code\\\":\\\"build_request_failed\\\",\\\"message\\\":\\\"convert_to_ali_request_failed: invalid size: 720p, example: 1920*1080\\\",\\\"data\\\":null}\",\"data\":null}"
+  },
+  "happyhorse-1.0-i2v": {
+    "status": "FAILURE",
+    "task_id": "task_n2RWcrVADdf8D8XwtJYUtcwtORWu3vLq",
+    "reason": "Field required: input.media"
+  },
+  "happyhorse-1.0-r2v": {
+    "status": "FAILURE",
+    "task_id": "task_MJagMvIbrI0mrzzSnQrAs0ctE0LyQvxb",
+    "reason": "Field required: input.media"
+  }
+}

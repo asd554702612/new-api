@@ -278,7 +278,7 @@ const Compliance = () => {
       record.status || (isPrivacyTab ? 'processing' : 'processing'),
     );
     setProcessNote(record.admin_note || '');
-    setExecuteAccountDeletion(false);
+    setExecuteAccountDeletion(Boolean(record.execute_account_deletion));
     setDetailVisible(true);
 
     if (!recordId) return;
@@ -297,6 +297,9 @@ const Compliance = () => {
         setCurrentRecord({ ...record, ...normalizedDetail });
         setNextStatus(normalizedDetail.status || record.status || 'processing');
         setProcessNote(normalizedDetail.admin_note || '');
+        setExecuteAccountDeletion(
+          Boolean(normalizedDetail.execute_account_deletion),
+        );
       }
     } catch (error) {
       setCurrentRecord(record);

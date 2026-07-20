@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -129,4 +130,43 @@ func TestGetStatusFallsBackToGlobalOIDCClientForUnknownHost(t *testing.T) {
 	require.Equal(t, true, response.Data["oidc_enabled"])
 	require.Equal(t, "global-client", response.Data["oidc_client_id"])
 	require.Equal(t, "https://login.example/global/auth", response.Data["oidc_authorization_endpoint"])
+}
+
+func TestGetStatusAllowsOIDCRegisterWhenCasdoorIdentityDisabled(t *testing.T) {
+	setupStatusOIDCHostTest(t)
+	originalRegisterEnabled := common.RegisterEnabled
+	originalCasdoorIdentityEnabled := setting.CasdoorIdentityEnabled
+	t.Cleanup(func() {
+		common.RegisterEnabled = originalRegisterEnabled
+		setting.CasdoorIdentityEnabled = originalCasdoorIdentityEnabled
+	})
+
+	common.RegisterEnabled = false
+	setting.CasdoorIdentityEnabled = false
+	*system_setting.GetOIDCSettings() = system_setting.OIDCSettings{
+		Enabled:               true,
+		ClientId:              "global-client",
+		ClientSecret:          "global-secret",
+		AuthorizationEndpoint: "https://login.example/global/auth",
+		TokenEndpoint:         "https://login.example/global/token",
+		UserInfoEndpoint:      "https://login.example/global/userinfo",
+	}
+
+	router := gin.New()
+	router.GET("/api/status", GetStatus)
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req.Host = "token.gepinkeji.com"
+	router.ServeHTTP(recorder, req)
+
+	var response struct {
+		Success bool           `json:"success"`
+		Data    map[string]any `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.True(t, response.Success)
+	require.Equal(t, true, response.Data["oidc_enabled"])
+	require.Equal(t, true, response.Data["oauth_register_enabled"])
+	require.Equal(t, false, response.Data["casdoor_identity_enabled"])
 }

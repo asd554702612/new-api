@@ -18,16 +18,115 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Avatar, Button, Card, Typography } from '@douyinfe/semi-ui';
-import { Lock, Mail, Phone, User, Users } from 'lucide-react';
+import { Avatar, Button, Card, Tag, Typography } from '@douyinfe/semi-ui';
+import {
+  ExternalLink,
+  Lock,
+  Mail,
+  Phone,
+  RefreshCw,
+  ShieldCheck,
+  User,
+  Users,
+} from 'lucide-react';
 
 const PersonalInfoCard = ({
   t,
   user,
+  status,
   phoneVerificationEnabled,
+  identitySyncLoading,
+  identityVerificationLoading,
   onChangePhone,
   onChangePassword,
+  onBindOIDC,
+  onSyncIdentityStatus,
+  onStartIdentityVerification,
 }) => {
+  const identityEnabled = Boolean(status?.casdoor_identity_enabled);
+  const identityApiRequired = Boolean(status?.casdoor_identity_api_required);
+  const oidcBound = Boolean(user?.oidc_id);
+  const identityPassed = Boolean(
+    user?.identity_verified &&
+    user?.identity_age_checked &&
+    user?.identity_over16,
+  );
+
+  const identityStatus = (() => {
+    if (!oidcBound) {
+      return {
+        label: t('未绑定登录中心'),
+        color: 'grey',
+      };
+    }
+    if (identityPassed) {
+      return {
+        label: t('已实名认证'),
+        color: 'green',
+      };
+    }
+    return {
+      label: t('未完成实名认证'),
+      color: 'orange',
+    };
+  })();
+
+  const identityActions = identityEnabled ? (
+    <div className='mt-2 flex flex-wrap gap-2'>
+      {!oidcBound ? (
+        <Button
+          type='primary'
+          theme='outline'
+          size='small'
+          icon={<ExternalLink size={14} />}
+          onClick={onBindOIDC}
+          disabled={!status?.oidc_enabled}
+        >
+          {status?.oidc_enabled ? t('绑定登录中心') : t('登录中心未启用')}
+        </Button>
+      ) : (
+        <>
+          {!identityPassed && (
+            <Button
+              type='primary'
+              theme='outline'
+              size='small'
+              icon={<ExternalLink size={14} />}
+              loading={identityVerificationLoading}
+              onClick={onStartIdentityVerification}
+            >
+              {t('去实名认证')}
+            </Button>
+          )}
+          <Button
+            theme='outline'
+            size='small'
+            icon={<RefreshCw size={14} />}
+            loading={identitySyncLoading}
+            onClick={onSyncIdentityStatus}
+          >
+            {t('刷新状态')}
+          </Button>
+        </>
+      )}
+    </div>
+  ) : null;
+
+  const identityApiNotice =
+    identityEnabled && identityApiRequired ? (
+      <div
+        className={
+          identityPassed
+            ? 'mt-2 text-xs text-emerald-600'
+            : 'mt-2 text-xs text-orange-600'
+        }
+      >
+        {identityPassed
+          ? t('已满足实名认证要求，API 调用可用')
+          : t('管理员已要求完成实名认证后才能使用 API 调用')}
+      </div>
+    ) : null;
+
   const items = [
     {
       icon: <User size={18} />,
@@ -50,6 +149,21 @@ const PersonalInfoCard = ({
       value: user?.group || t('默认'),
     },
   ];
+
+  if (identityEnabled) {
+    items.push({
+      icon: <ShieldCheck size={18} />,
+      label: t('实名认证'),
+      multiline: true,
+      value: (
+        <div>
+          <Tag color={identityStatus.color}>{identityStatus.label}</Tag>
+          {identityApiNotice}
+          {identityActions}
+        </div>
+      ),
+    });
+  }
 
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
@@ -106,8 +220,14 @@ const PersonalInfoCard = ({
                 {item.label}
               </Typography.Text>
               <Typography.Paragraph
-                className='!mb-0 truncate'
-                copyable={item.value && item.value !== t('未绑定') ? { content: item.value } : false}
+                className={item.multiline ? '!mb-0' : '!mb-0 truncate'}
+                copyable={
+                  typeof item.value === 'string' &&
+                  item.value &&
+                  item.value !== t('未绑定')
+                    ? { content: item.value }
+                    : false
+                }
               >
                 {item.value}
               </Typography.Paragraph>

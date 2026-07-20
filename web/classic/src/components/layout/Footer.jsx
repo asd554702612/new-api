@@ -78,6 +78,9 @@ const FooterBar = () => {
                   >
                     {t('联系我们')}
                   </a>
+                  <a href='/feedback' className='!text-semi-color-text-1'>
+                    {t('投诉反馈')}
+                  </a>
                   <a
                     href='https://docs.newapi.pro/wiki/features-introduction/'
                     target='_blank'
@@ -195,7 +198,13 @@ const FooterBar = () => {
             </Typography.Text>
           </div>
 
-          <div className='text-sm'>
+          <div className='flex flex-wrap items-center justify-center gap-x-3 gap-y-2 text-sm md:justify-end'>
+            <a
+              href='/feedback'
+              className='!text-semi-color-primary font-medium'
+            >
+              {t('投诉反馈')}
+            </a>
             <span className='!text-semi-color-text-1'>
               {t('设计与开发由')}{' '}
             </span>

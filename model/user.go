@@ -56,6 +56,10 @@ type User struct {
 	Setting               string                          `json:"setting" gorm:"type:text;column:setting"`
 	Remark                string                          `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer        string                          `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	IdentityVerified      bool                            `json:"identity_verified" gorm:"default:false;column:identity_verified"`
+	IdentityAgeChecked    bool                            `json:"identity_age_checked" gorm:"default:false;column:identity_age_checked"`
+	IdentityOver16        bool                            `json:"identity_over16" gorm:"default:false;column:identity_over16"`
+	IdentitySyncedAt      int64                           `json:"identity_synced_at" gorm:"default:0;column:identity_synced_at"`
 	CreatedAt             int64                           `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt           int64                           `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	AdminPermissions      map[string]map[string]bool      `json:"admin_permissions,omitempty" gorm:"-:all"`
@@ -63,13 +67,17 @@ type User struct {
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:       user.Id,
-		Group:    user.Group,
-		Quota:    user.Quota,
-		Status:   user.Status,
-		Username: user.Username,
-		Setting:  user.Setting,
-		Email:    user.Email,
+		Id:                     user.Id,
+		Group:                  user.Group,
+		Quota:                  user.Quota,
+		Status:                 user.Status,
+		Username:               user.Username,
+		Setting:                user.Setting,
+		Email:                  user.Email,
+		IdentityVerified:       user.IdentityVerified,
+		IdentityAgeChecked:     user.IdentityAgeChecked,
+		IdentityOver16:         user.IdentityOver16,
+		IdentitySnapshotCached: true,
 	}
 	return cache
 }
@@ -572,6 +580,28 @@ func (user *User) Update(updatePassword bool) error {
 	return updateUserCache(*user)
 }
 
+func (user *User) UpdateIdentitySnapshot(verified bool, ageChecked bool, over16 bool, syncedAt int64) error {
+	if user.Id == 0 {
+		return errors.New("user id is empty")
+	}
+	if syncedAt == 0 {
+		syncedAt = common.GetTimestamp()
+	}
+	if err := DB.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
+		"identity_verified":    verified,
+		"identity_age_checked": ageChecked,
+		"identity_over16":      over16,
+		"identity_synced_at":   syncedAt,
+	}).Error; err != nil {
+		return err
+	}
+	user.IdentityVerified = verified
+	user.IdentityAgeChecked = ageChecked
+	user.IdentityOver16 = over16
+	user.IdentitySyncedAt = syncedAt
+	return updateUserCache(*user)
+}
+
 func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	var err error
 	if updatePassword {
@@ -792,7 +822,7 @@ func IsDiscordIdAlreadyTaken(discordId string) bool {
 }
 
 func IsOidcIdAlreadyTaken(oidcId string) bool {
-	return DB.Where("oidc_id = ?", oidcId).Find(&User{}).RowsAffected == 1
+	return DB.Unscoped().Where("oidc_id = ?", oidcId).Find(&User{}).RowsAffected == 1
 }
 
 func IsTelegramIdAlreadyTaken(telegramId string) bool {

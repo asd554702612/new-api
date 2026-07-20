@@ -281,6 +281,16 @@ const PersonalInfoRightsCard = ({ t }) => {
       render: (value, record) => formatDate(value || record.createdAt),
     },
     {
+      title: t('处理时间'),
+      dataIndex: 'handled_at',
+      render: (value, record) => formatDate(value || record.handledAt),
+    },
+    {
+      title: t('处理说明'),
+      dataIndex: 'admin_note',
+      render: (value) => <span className='line-clamp-2'>{value || '-'}</span>,
+    },
+    {
       title: t('操作'),
       dataIndex: 'operate',
       render: (_, record) =>

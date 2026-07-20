@@ -18,13 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { ClipboardCheck, MessageSquare } from 'lucide-react'
+import { ClipboardCheck, MessageSquare, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { CopyButton } from '@/components/copy-button'
 import { PublicLayout } from '@/components/layout'
 import { Turnstile } from '@/components/turnstile'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -35,25 +36,128 @@ import {
 } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { useStatus } from '@/hooks/use-status'
-import { createPublicFeedback } from './api'
-import type { CreatePublicFeedbackPayload, PublicFeedbackType } from './types'
+import { cn } from '@/lib/utils'
+import { createPublicFeedback, trackPublicFeedback } from './api'
+import type {
+	CreatePublicFeedbackPayload,
+	PublicFeedbackStatus,
+	PublicFeedbackTrackResult,
+	PublicFeedbackType,
+} from './types'
+import { formatComplianceTimestamp } from './utils'
 
 const DEFAULT_FEEDBACK_FORM: CreatePublicFeedbackPayload = {
-  feedback_type: 'complaint',
+	feedback_type: 'complaint',
   contact_name: '',
   contact_email: '',
   contact_phone: '',
   title: '',
-  content: '',
+	content: '',
+}
+
+function getFeedbackTypeLabel(
+	t: (key: string) => string,
+	value: PublicFeedbackType | string
+) {
+	const labels: Record<string, string> = {
+		complaint: t('Complaint'),
+		feedback: t('Feedback'),
+		other: t('Other'),
+	}
+	return labels[value] ?? value
+}
+
+function getFeedbackStatusLabel(
+	t: (key: string) => string,
+	value: PublicFeedbackStatus | string
+) {
+	const labels: Record<string, string> = {
+		pending: t('Pending'),
+		processing: t('Processing'),
+		resolved: t('Resolved'),
+		closed: t('Closed'),
+		rejected: t('Rejected'),
+	}
+	return labels[value] ?? value
+}
+
+function getFeedbackStatusBadgeClass(status: PublicFeedbackStatus | string) {
+	if (status === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
+	if (status === 'processing') return 'border-sky-200 bg-sky-50 text-sky-700'
+	if (status === 'resolved') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+	if (status === 'rejected') return 'border-rose-200 bg-rose-50 text-rose-700'
+	return 'border-muted bg-muted text-muted-foreground'
+}
+
+function TrackedFeedbackResult(props: {
+	record: PublicFeedbackTrackResult
+	t: (key: string) => string
+}) {
+	return (
+		<div className='grid gap-3 rounded-lg border p-3 sm:grid-cols-2'>
+			<div>
+				<div className='text-muted-foreground text-xs'>
+					{props.t('Tracking code')}
+				</div>
+				<div className='break-all text-sm font-medium'>
+					{props.record.tracking_code}
+				</div>
+			</div>
+			<div>
+				<div className='text-muted-foreground text-xs'>{props.t('Status')}</div>
+				<Badge
+					variant='outline'
+					className={cn(getFeedbackStatusBadgeClass(props.record.status))}
+				>
+					{getFeedbackStatusLabel(props.t, props.record.status)}
+				</Badge>
+			</div>
+			<div>
+				<div className='text-muted-foreground text-xs'>{props.t('Type')}</div>
+				<div className='text-sm'>
+					{getFeedbackTypeLabel(props.t, props.record.feedback_type)}
+				</div>
+			</div>
+			<div>
+				<div className='text-muted-foreground text-xs'>
+					{props.t('Handled at')}
+				</div>
+				<div className='text-sm'>
+					{formatComplianceTimestamp(props.record.handled_at)}
+				</div>
+			</div>
+			<div className='sm:col-span-2'>
+				<div className='text-muted-foreground text-xs'>{props.t('Title')}</div>
+				<div className='break-all text-sm font-medium'>{props.record.title}</div>
+			</div>
+			<div className='sm:col-span-2'>
+				<div className='text-muted-foreground text-xs'>{props.t('Content')}</div>
+				<div className='whitespace-pre-wrap break-all text-sm'>
+					{props.record.content}
+				</div>
+			</div>
+			<div className='sm:col-span-2'>
+				<div className='text-muted-foreground text-xs'>
+					{props.t('Processing note')}
+				</div>
+				<div className='whitespace-pre-wrap break-all text-sm'>
+					{props.record.admin_note || '-'}
+				</div>
+			</div>
+		</div>
+	)
 }
 
 export function PublicFeedbackPage() {
-  const { t } = useTranslation()
-  const { status } = useStatus()
-  const [form, setForm] =
-    useState<CreatePublicFeedbackPayload>(DEFAULT_FEEDBACK_FORM)
-  const [turnstileToken, setTurnstileToken] = useState('')
-  const [trackingCode, setTrackingCode] = useState('')
+	const { t } = useTranslation()
+	const { status } = useStatus()
+	const [form, setForm] =
+		useState<CreatePublicFeedbackPayload>(DEFAULT_FEEDBACK_FORM)
+	const [turnstileToken, setTurnstileToken] = useState('')
+	const [trackingCode, setTrackingCode] = useState('')
+	const [trackingCodeQuery, setTrackingCodeQuery] = useState('')
+	const [trackedFeedback, setTrackedFeedback] =
+		useState<PublicFeedbackTrackResult | null>(null)
 
   const turnstileEnabled = Boolean(
     status?.turnstile_check && status?.turnstile_site_key
@@ -76,8 +180,20 @@ export function PublicFeedbackPage() {
       setForm(DEFAULT_FEEDBACK_FORM)
       setTurnstileToken('')
       toast.success(t('Feedback submitted successfully'))
-    },
-  })
+		},
+	})
+
+	const trackMutation = useMutation({
+		mutationFn: trackPublicFeedback,
+		onSuccess: (response) => {
+			if (response.success === false || !response.data) {
+				toast.error(response.message || t('Feedback record not found'))
+				setTrackedFeedback(null)
+				return
+			}
+			setTrackedFeedback(response.data)
+		},
+	})
 
   const updateFormField = (
     field: keyof CreatePublicFeedbackPayload,
@@ -94,7 +210,7 @@ export function PublicFeedbackPage() {
     setTurnstileToken('')
   }, [])
 
-  const submitFeedback = () => {
+	const submitFeedback = () => {
     const payload: CreatePublicFeedbackPayload = {
       feedback_type: form.feedback_type,
       contact_name: form.contact_name.trim(),
@@ -125,12 +241,21 @@ export function PublicFeedbackPage() {
       return
     }
 
-    submitMutation.mutate(payload)
-  }
+		submitMutation.mutate(payload)
+	}
 
-  return (
-    <PublicLayout>
-      <div className='mx-auto flex w-full max-w-3xl flex-col gap-5 py-8'>
+	const submitTrackingQuery = () => {
+		const code = trackingCodeQuery.trim()
+		if (!code) {
+			toast.error(t('Please enter a tracking code'))
+			return
+		}
+		trackMutation.mutate(code)
+	}
+
+	return (
+		<PublicLayout>
+			<div className='mx-auto flex w-full max-w-3xl flex-col gap-5 py-8'>
         <Card className='overflow-hidden'>
           <CardHeader className='border-b'>
             <div className='flex items-start gap-3'>
@@ -270,16 +395,55 @@ export function PublicFeedbackPage() {
             ) : null}
 
             <div className='flex justify-end'>
-              <Button
-                onClick={submitFeedback}
-                disabled={submitMutation.isPending}
-              >
-                {submitMutation.isPending ? t('Submitting...') : t('Submit')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </PublicLayout>
-  )
+								<Button
+									onClick={submitFeedback}
+									disabled={submitMutation.isPending}
+								>
+									{submitMutation.isPending ? t('Submitting...') : t('Submit')}
+								</Button>
+							</div>
+						</CardContent>
+					</Card>
+					<Card className='overflow-hidden'>
+						<CardHeader className='border-b'>
+							<div className='flex items-start gap-3'>
+								<div className='bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg'>
+									<Search className='size-5' />
+								</div>
+								<div className='min-w-0 space-y-1'>
+									<CardTitle>{t('Track feedback')}</CardTitle>
+								</div>
+							</div>
+						</CardHeader>
+						<CardContent className='space-y-4 p-4 sm:p-6'>
+							<div className='space-y-1.5'>
+								<Label htmlFor='feedback-tracking-code'>
+									{t('Tracking code')}
+								</Label>
+								<div className='flex flex-col gap-2 sm:flex-row'>
+									<Input
+										id='feedback-tracking-code'
+										value={trackingCodeQuery}
+										onChange={(event) =>
+											setTrackingCodeQuery(event.target.value)
+										}
+										placeholder={t('Enter tracking code')}
+									/>
+									<Button
+										onClick={submitTrackingQuery}
+										disabled={trackMutation.isPending}
+									>
+										<Search className='size-4' />
+										{trackMutation.isPending ? t('Searching...') : t('Search')}
+									</Button>
+								</div>
+							</div>
+							{trackedFeedback ? (
+								<TrackedFeedbackResult record={trackedFeedback} t={t} />
+							) : null}
+						</CardContent>
+					</Card>
+				</div>
+			</PublicLayout>
+	)
 }

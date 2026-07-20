@@ -121,6 +121,7 @@ const HeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
             isLoading={isLoading}
             isMobile={isMobile}
             isSelfUseMode={isSelfUseMode}
+            status={statusState?.status}
             logout={logout}
             navigate={navigate}
             t={t}

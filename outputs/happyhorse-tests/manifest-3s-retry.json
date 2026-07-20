@@ -1,0 +1,21 @@
+{
+  "happyhorse-1.0-r2v": {
+    "status": "FAILURE",
+    "task_id": "task_31MfcwxQjIQkn5ygNHD7llA0mcjLLivk",
+    "reason": "Failed to download https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20260424/ttmcir/hh-v2v-fan.jpg"
+  },
+  "happyhorse-1.0-t2v": {
+    "status": "SUCCESS",
+    "task_id": "task_yXCdBMPyezTkxkYimnqRbVJEYsJMZkyG",
+    "path": "/Users/mac/work/gepin/new-api/outputs/happyhorse-tests/happyhorse-1.0-t2v_task_yXCdBMPyezTkxkYimnqRbVJEYsJMZkyG.mp4",
+    "bytes": 1473800,
+    "content_type": "video/mp4"
+  },
+  "happyhorse-1.0-i2v": {
+    "status": "SUCCESS",
+    "task_id": "task_vEXVuzXzUMjTwcx7VHxIBENX5TSgOB31",
+    "path": "/Users/mac/work/gepin/new-api/outputs/happyhorse-tests/happyhorse-1.0-i2v_task_vEXVuzXzUMjTwcx7VHxIBENX5TSgOB31.mp4",
+    "bytes": 3427733,
+    "content_type": "video/mp4"
+  }
+}

@@ -142,6 +142,88 @@ func TestCreatePublicFeedbackAllowsAnonymousSubmission(t *testing.T) {
 	require.NotEmpty(t, saved.IpHash)
 }
 
+func TestTrackPublicFeedbackReturnsSanitizedRecord(t *testing.T) {
+	setupComplianceControllerTestDB(t)
+	feedback, err := model.CreatePublicFeedback(model.PublicFeedbackInput{
+		UserId:       901,
+		Username:     "alice",
+		ContactName:  "Alice",
+		ContactEmail: "alice@example.com",
+		ContactPhone: "+8613800138000",
+		FeedbackType: model.PublicFeedbackTypeComplaint,
+		Title:        "Service issue",
+		Content:      "Please resolve this issue.",
+		IpHash:       "hash-sensitive",
+	})
+	require.NoError(t, err)
+	_, err = model.UpdatePublicFeedbackStatus(feedback.Id, model.PublicFeedbackStatusResolved, 7, "admin", "resolved safely")
+	require.NoError(t, err)
+
+	router := newComplianceControllerRouter(nil)
+	router.GET("/api/feedback/track/:tracking_code", TrackPublicFeedback)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/feedback/track/"+feedback.TrackingCode, nil)
+	router.ServeHTTP(recorder, request)
+	response := decodeComplianceResponse(t, recorder)
+
+	require.Equal(t, true, response["success"])
+	data, ok := response["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, feedback.TrackingCode, data["tracking_code"])
+	require.Equal(t, model.PublicFeedbackStatusResolved, data["status"])
+	require.Equal(t, "resolved safely", data["admin_note"])
+	require.NotZero(t, data["handled_at"])
+	require.NotContains(t, data, "user_id")
+	require.NotContains(t, data, "username")
+	require.NotContains(t, data, "contact_email")
+	require.NotContains(t, data, "contact_phone")
+	require.NotContains(t, data, "admin_id")
+	require.NotContains(t, data, "ip_hash")
+}
+
+func TestGetMyFeedbackDetailRequiresOwner(t *testing.T) {
+	setupComplianceControllerTestDB(t)
+	alice := createComplianceTestUser(t, "alice", common.RoleCommonUser)
+	bob := createComplianceTestUser(t, "bob", common.RoleCommonUser)
+	ownFeedback, err := model.CreatePublicFeedback(model.PublicFeedbackInput{
+		UserId:       alice.Id,
+		Username:     alice.Username,
+		FeedbackType: model.PublicFeedbackTypeFeedback,
+		Title:        "Own feedback",
+		Content:      "Visible to Alice.",
+		IpHash:       "hash-a",
+	})
+	require.NoError(t, err)
+	otherFeedback, err := model.CreatePublicFeedback(model.PublicFeedbackInput{
+		UserId:       bob.Id,
+		Username:     bob.Username,
+		FeedbackType: model.PublicFeedbackTypeComplaint,
+		Title:        "Other feedback",
+		Content:      "Hidden from Alice.",
+		IpHash:       "hash-b",
+	})
+	require.NoError(t, err)
+
+	router := newComplianceControllerRouter(alice)
+	router.GET("/api/feedback/my/:id", GetMyFeedbackDetail)
+
+	ownRecorder := httptest.NewRecorder()
+	ownRequest := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/feedback/my/%d", ownFeedback.Id), nil)
+	router.ServeHTTP(ownRecorder, ownRequest)
+	ownResponse := decodeComplianceResponse(t, ownRecorder)
+	require.Equal(t, true, ownResponse["success"])
+	ownData, ok := ownResponse["data"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(ownFeedback.Id), ownData["id"])
+
+	otherRecorder := httptest.NewRecorder()
+	otherRequest := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/feedback/my/%d", otherFeedback.Id), nil)
+	router.ServeHTTP(otherRecorder, otherRequest)
+	otherResponse := decodeComplianceResponse(t, otherRecorder)
+	require.Equal(t, false, otherResponse["success"])
+}
+
 func TestAdminUpdatePrivacyRequestDoesNotDeleteRootUser(t *testing.T) {
 	setupComplianceControllerTestDB(t)
 	rootUser := createComplianceTestUser(t, "root-user", common.RoleRootUser)

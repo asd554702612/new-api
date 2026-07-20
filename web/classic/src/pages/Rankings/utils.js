@@ -41,6 +41,7 @@ export function normalizeRankingsModule(moduleConfig) {
 export function buildHeaderNavModulesWithRankings(modules) {
   return {
     ...modules,
+    feedback: modules?.feedback ?? true,
     rankings: normalizeRankingsModule(modules?.rankings),
   };
 }
@@ -49,9 +50,9 @@ export function formatCompactNumber(value) {
   const num = Number(value || 0);
   if (!Number.isFinite(num)) return '0';
   const abs = Math.abs(num);
-  if (abs >= 1_000_000_000) return `${trimFixed(num / 1_000_000_000)}B`;
-  if (abs >= 1_000_000) return `${trimFixed(num / 1_000_000)}M`;
-  if (abs >= 1_000) return `${trimFixed(num / 1_000)}K`;
+  if (abs >= 1000000000) return `${trimFixed(num / 1000000000)}B`;
+  if (abs >= 1000000) return `${trimFixed(num / 1000000)}M`;
+  if (abs >= 1000) return `${trimFixed(num / 1000)}K`;
   return Math.round(num).toLocaleString();
 }
 

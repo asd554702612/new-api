@@ -27,56 +27,24 @@ import {
   showError,
   showSuccess,
 } from '../../../helpers';
-
-const defaultInputs = {
-  CasdoorPaymentEnabled: false,
-  CasdoorBaseURL: 'https://login.gepinkeji.com',
-  CasdoorClientID: '',
-  CasdoorClientSecret: '',
-  CasdoorApplicationName: '',
-  CasdoorPaymentProduct: 'external-pay-template',
-  CasdoorPaymentProvider: 'provider_payment_wechat_gepinkeji',
-  CasdoorPaymentCurrency: 'CNY',
-  CasdoorPaymentUnitPrice: 0,
-  CasdoorPaymentMinTopUp: 1,
-};
+import {
+  buildCasdoorSettingOptions,
+  defaultCasdoorSettingInputs,
+  normalizeCasdoorSettingInputs,
+} from './casdoorSettingsOptions';
 
 export default function SettingsPaymentGatewayCasdoor(props) {
   const { t } = useTranslation();
   const sectionTitle = props.hideSectionTitle
     ? undefined
-    : t('Casdoor 统一支付设置');
+    : t('Casdoor 登录中心设置');
   const [loading, setLoading] = useState(false);
-  const [inputs, setInputs] = useState(defaultInputs);
+  const [inputs, setInputs] = useState(defaultCasdoorSettingInputs);
   const formApiRef = useRef(null);
 
   useEffect(() => {
     if (!props.options || !formApiRef.current) return;
-    const currentInputs = {
-      CasdoorPaymentEnabled: !!props.options.CasdoorPaymentEnabled,
-      CasdoorBaseURL:
-        props.options.CasdoorBaseURL || defaultInputs.CasdoorBaseURL,
-      CasdoorClientID: props.options.CasdoorClientID || '',
-      CasdoorClientSecret: '',
-      CasdoorApplicationName: props.options.CasdoorApplicationName || '',
-      CasdoorPaymentProduct:
-        props.options.CasdoorPaymentProduct ||
-        defaultInputs.CasdoorPaymentProduct,
-      CasdoorPaymentProvider:
-        props.options.CasdoorPaymentProvider ||
-        defaultInputs.CasdoorPaymentProvider,
-      CasdoorPaymentCurrency:
-        props.options.CasdoorPaymentCurrency ||
-        defaultInputs.CasdoorPaymentCurrency,
-      CasdoorPaymentUnitPrice:
-        props.options.CasdoorPaymentUnitPrice !== undefined
-          ? parseFloat(props.options.CasdoorPaymentUnitPrice)
-          : 0,
-      CasdoorPaymentMinTopUp:
-        props.options.CasdoorPaymentMinTopUp !== undefined
-          ? parseInt(props.options.CasdoorPaymentMinTopUp)
-          : 1,
-    };
+    const currentInputs = normalizeCasdoorSettingInputs(props.options);
     setInputs(currentInputs);
     formApiRef.current.setValues(currentInputs);
   }, [props.options]);
@@ -109,57 +77,7 @@ export default function SettingsPaymentGatewayCasdoor(props) {
     };
     setLoading(true);
     try {
-      const options = [
-        {
-          key: 'CasdoorPaymentEnabled',
-          value: values.CasdoorPaymentEnabled ? 'true' : 'false',
-        },
-        {
-          key: 'CasdoorBaseURL',
-          value: removeTrailingSlash(values.CasdoorBaseURL || ''),
-        },
-        { key: 'CasdoorClientID', value: values.CasdoorClientID || '' },
-        {
-          key: 'CasdoorApplicationName',
-          value: values.CasdoorApplicationName || '',
-        },
-        {
-          key: 'CasdoorPaymentProduct',
-          value: values.CasdoorPaymentProduct || 'external-pay-template',
-        },
-        {
-          key: 'CasdoorPaymentProvider',
-          value:
-            values.CasdoorPaymentProvider ||
-            'provider_payment_wechat_gepinkeji',
-        },
-        {
-          key: 'CasdoorPaymentCurrency',
-          value: (values.CasdoorPaymentCurrency || 'CNY').toUpperCase(),
-        },
-        {
-          key: 'CasdoorPaymentUnitPrice',
-          value:
-            values.CasdoorPaymentUnitPrice !== undefined &&
-            values.CasdoorPaymentUnitPrice !== null
-              ? values.CasdoorPaymentUnitPrice.toString()
-              : '0',
-        },
-        {
-          key: 'CasdoorPaymentMinTopUp',
-          value:
-            values.CasdoorPaymentMinTopUp !== undefined &&
-            values.CasdoorPaymentMinTopUp !== null
-              ? values.CasdoorPaymentMinTopUp.toString()
-              : '1',
-        },
-      ];
-      if ((values.CasdoorClientSecret || '').trim()) {
-        options.push({
-          key: 'CasdoorClientSecret',
-          value: values.CasdoorClientSecret,
-        });
-      }
+      const options = buildCasdoorSettingOptions(values);
       const ok = await updateOptions(options);
       if (!ok) return;
       showSuccess(t('更新成功'));
@@ -184,7 +102,11 @@ export default function SettingsPaymentGatewayCasdoor(props) {
             icon={<BookOpen size={16} />}
             description={
               <>
-                {t('Casdoor 统一支付用于创建微信支付订单，支付成功通过业务系统 Webhook 完成充值或订阅。')}
+                {t(
+                  'Casdoor 统一支付用于创建微信支付订单，支付成功通过业务系统 Webhook 完成充值或订阅。',
+                )}
+                <br />
+                {t('Casdoor 登录中心用于 OIDC 登录、登录中心注册和实名认证。')}
                 <br />
                 {t('回调地址')}：
                 {props.options.ServerAddress
@@ -205,6 +127,29 @@ export default function SettingsPaymentGatewayCasdoor(props) {
                 label={t('启用 Casdoor 统一支付')}
               />
             </Col>
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Switch
+                field='CasdoorIdentityEnabled'
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+                label={t('启用 Casdoor 实名认证')}
+              />
+            </Col>
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Switch
+                field='CasdoorIdentityApiRequired'
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+                label={t('API 调用必须完成实名认证')}
+              />
+            </Col>
+          </Row>
+          <Row
+            gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+            style={{ marginTop: 16 }}
+          >
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.Input
                 field='CasdoorBaseURL'
@@ -252,6 +197,18 @@ export default function SettingsPaymentGatewayCasdoor(props) {
             gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
             style={{ marginTop: 16 }}
           >
+            <Col xs={24} sm={24} md={16} lg={16} xl={16}>
+              <Form.Input
+                field='CasdoorIdentityCallbackURL'
+                label={t('实名认证回调地址')}
+                placeholder={t('留空时使用当前站点 /identity/callback')}
+              />
+            </Col>
+          </Row>
+          <Row
+            gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
+            style={{ marginTop: 16 }}
+          >
             <Col xs={24} sm={24} md={6} lg={6} xl={6}>
               <Form.Input
                 field='CasdoorPaymentProduct'
@@ -278,7 +235,7 @@ export default function SettingsPaymentGatewayCasdoor(props) {
             </Col>
           </Row>
           <Button style={{ marginTop: 16 }} onClick={submitCasdoorSetting}>
-            {t('更新 Casdoor 统一支付设置')}
+            {t('更新 Casdoor 登录中心设置')}
           </Button>
         </Form.Section>
       </Form>

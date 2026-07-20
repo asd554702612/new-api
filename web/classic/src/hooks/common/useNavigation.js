@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useMemo } from 'react';
 
-const defaultHeaderNavModules = {
+export const defaultHeaderNavModules = {
   home: true,
   console: true,
   pricing: {
@@ -27,10 +27,11 @@ const defaultHeaderNavModules = {
     requireAuth: false,
   },
   docs: true,
+  feedback: true,
   about: true,
 };
 
-const normalizeHeaderNavModules = (headerNavModules) => {
+export const normalizeHeaderNavModules = (headerNavModules) => {
   if (!headerNavModules) {
     return defaultHeaderNavModules;
   }
@@ -48,57 +49,66 @@ const normalizeHeaderNavModules = (headerNavModules) => {
   };
 };
 
+export const buildHeaderNavLinks = (t, docsLink, headerNavModules) => {
+  // 后端可能按环境只返回局部覆盖配置，需与默认模块合并。
+  const modules = normalizeHeaderNavModules(headerNavModules);
+
+  const allLinks = [
+    {
+      text: t('首页'),
+      itemKey: 'home',
+      to: '/',
+    },
+    {
+      text: t('控制台'),
+      itemKey: 'console',
+      to: '/console',
+    },
+    {
+      text: t('模型广场'),
+      itemKey: 'pricing',
+      to: '/pricing',
+    },
+    ...(docsLink
+      ? [
+          {
+            text: t('文档'),
+            itemKey: 'docs',
+            isExternal: true,
+            externalLink: docsLink,
+          },
+        ]
+      : []),
+    {
+      text: t('投诉反馈'),
+      itemKey: 'feedback',
+      to: '/feedback',
+    },
+    {
+      text: t('关于'),
+      itemKey: 'about',
+      to: '/about',
+    },
+  ];
+
+  // 根据配置过滤导航链接
+  return allLinks.filter((link) => {
+    if (link.itemKey === 'docs') {
+      return docsLink && modules.docs;
+    }
+    if (link.itemKey === 'pricing') {
+      // 支持新的pricing配置格式
+      return typeof modules.pricing === 'object'
+        ? modules.pricing.enabled
+        : modules.pricing;
+    }
+    return modules[link.itemKey] === true;
+  });
+};
+
 export const useNavigation = (t, docsLink, headerNavModules) => {
   const mainNavLinks = useMemo(() => {
-    // 后端可能按环境只返回局部覆盖配置，需与默认模块合并。
-    const modules = normalizeHeaderNavModules(headerNavModules);
-
-    const allLinks = [
-      {
-        text: t('首页'),
-        itemKey: 'home',
-        to: '/',
-      },
-      {
-        text: t('控制台'),
-        itemKey: 'console',
-        to: '/console',
-      },
-      {
-        text: t('模型广场'),
-        itemKey: 'pricing',
-        to: '/pricing',
-      },
-      ...(docsLink
-        ? [
-            {
-              text: t('文档'),
-              itemKey: 'docs',
-              isExternal: true,
-              externalLink: docsLink,
-            },
-          ]
-        : []),
-      {
-        text: t('关于'),
-        itemKey: 'about',
-        to: '/about',
-      },
-    ];
-
-    // 根据配置过滤导航链接
-    return allLinks.filter((link) => {
-      if (link.itemKey === 'docs') {
-        return docsLink && modules.docs;
-      }
-      if (link.itemKey === 'pricing') {
-        // 支持新的pricing配置格式
-        return typeof modules.pricing === 'object'
-          ? modules.pricing.enabled
-          : modules.pricing;
-      }
-      return modules[link.itemKey] === true;
-    });
+    return buildHeaderNavLinks(t, docsLink, headerNavModules);
   }, [t, docsLink, headerNavModules]);
 
   return {

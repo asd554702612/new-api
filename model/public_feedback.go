@@ -243,6 +243,38 @@ func GetPublicFeedbackByID(id int) (*PublicFeedback, error) {
 	return GetPublicFeedbackById(id)
 }
 
+func GetPublicFeedbackByTrackingCode(trackingCode string) (*PublicFeedback, error) {
+	trackingCode = strings.TrimSpace(trackingCode)
+	if trackingCode == "" {
+		return nil, errors.New("feedback tracking code is required")
+	}
+	var record PublicFeedback
+	if err := DB.Where("tracking_code = ?", trackingCode).First(&record).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &record, nil
+}
+
+func GetUserPublicFeedbackByID(userId int, id int) (*PublicFeedback, error) {
+	if userId <= 0 {
+		return nil, errors.New("user id is required")
+	}
+	if id <= 0 {
+		return nil, errors.New("invalid feedback id")
+	}
+	var record PublicFeedback
+	if err := DB.Where("id = ? AND user_id = ?", id, userId).First(&record).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &record, nil
+}
+
 func UpdatePublicFeedbackByAdmin(id int, input PublicFeedbackAdminUpdate) (*PublicFeedback, error) {
 	record, err := GetPublicFeedbackById(id)
 	if err != nil {

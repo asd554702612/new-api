@@ -95,8 +95,8 @@ export type PrivacyRequest = {
 }
 
 export type PublicFeedback = {
-  id: number
-  user_id: number
+	id: number
+	user_id: number
   username: string
   contact_name: string
   contact_email: string
@@ -111,12 +111,24 @@ export type PublicFeedback = {
   admin_note?: string
   created_at?: number
   updated_at?: number
-  handled_at?: number
+	handled_at?: number
+}
+
+export type PublicFeedbackTrackResult = {
+	tracking_code: string
+	feedback_type: PublicFeedbackType
+	title: string
+	content: string
+	status: PublicFeedbackStatus
+	admin_note?: string
+	created_at?: number
+	updated_at?: number
+	handled_at?: number
 }
 
 export type CreatePrivacyRequestPayload = {
-  request_type: PrivacyRequestType
-  contact_name: string
+	request_type: PrivacyRequestType
+	contact_name: string
   contact_email: string
   contact_phone: string
   content: string
